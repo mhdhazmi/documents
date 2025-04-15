@@ -1,4 +1,8 @@
-import { internalAction } from "./_generated/server";
+
+
+// Mutation that runs the internal action and returns the OCR content
+import { internalAction, mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import {
     GoogleGenAI,
@@ -7,6 +11,18 @@ import {
 } from "@google/genai";
 
 
+export const exposeOCR = mutation({
+    args: {
+        url: v.string(),
+    },
+    handler: async (ctx, {url}) => {
+        if (!url) {
+            throw new Error('URL is required');
+        }
+        await ctx.scheduler.runAfter(0, internal.performOCR.performOCR, {url}) 
+        return 
+    },
+});
 
 export const performOCR = internalAction({
 
@@ -15,7 +31,7 @@ export const performOCR = internalAction({
     },
     handler: async (ctx, args) => {
 
-        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const pdfBuffer = await fetch(args.url)
             .then((response) => response.arrayBuffer());
 
@@ -50,7 +66,9 @@ export const performOCR = internalAction({
 
         // Add the file to the contents.
         const content: (string | Part)[] = [
-            'Perform OCR on the following document and translate it to Arabic',
+            `Perform OCR on the following document, clean the text and translate it to both English and Arabic
+            text = {'Arabic': string, 'English': string}
+            Return: Array<text>`,
         ];
 
         if (file.uri && file.mimeType) {
@@ -62,8 +80,6 @@ export const performOCR = internalAction({
             model: 'gemini-2.0-flash',
             contents: content,
         });
-
-        console.log(response.text);
 
         return {
             text: response.text,
