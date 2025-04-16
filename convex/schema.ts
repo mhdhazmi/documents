@@ -35,4 +35,15 @@ export default defineSchema({
     replicateModelVersion: v.string(),
   })
   .index("by_pdf_id", ["pdfId"]),
+
+  openaiOcrResults: defineTable({
+    pdfId: v.id("pdfs"),
+    fileId: v.string(), // StorageId
+    originalSource: v.string(), // "gemini" or "replicate"
+    cleanedText: v.string(),
+    processedAt: v.number(),
+    openaiModel: v.string(),
+  })
+  .index("by_pdf_id", ["pdfId"])
+  .index("by_pdf_and_source", ["pdfId", "originalSource"]),
 });

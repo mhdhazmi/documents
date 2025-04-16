@@ -1,141 +1,133 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { redirect } from 'next/navigation'
+import { useRouter } from 'next/navigation';
+import PDFDropzone from "@/components/PDFDropzone";
+import UploadButton from "@/components/UploadButton";
+import { MessageCircleMore, MessageSquare } from "lucide-react";
 
+// Define types for our mutation functions to avoid 'any'
+type GenerateUploadUrlFn = () => Promise<string>;
+type SendPDFFn = (args: { fileId: string, filename: string, fileSize: number, pageCount: number }) => Promise<string>;
+type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
 
 export default function App() {
+  const router = useRouter();
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const sendPDF = useMutation(api.pdf.mutations.savePdfMetadata);
   const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
-  const PDFInput = useRef<HTMLInputElement>(null);
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
-  const [name] = useState(() => "User " + Math.floor(Math.random() * 10000));
-
-  // Function to count PDF pages using regex
-  const countPdfPages = (file: File): Promise<number> => {
-    return new Promise((resolve, reject) => {
-      setIsLoading(true);
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        try {
-          const content = e.target?.result as ArrayBuffer;
-          const bytes = new Uint8Array(content);
-          let text = "";
-          
-          // Convert binary data to string
-          for (let i = 0; i < bytes.length; i++) {
-            text += String.fromCharCode(bytes[i]);
-          }
-          
-          // Use regex to find page count patterns
-          // This is a simple approach and may not work for all PDFs
-          const pageCountRegex = /\/Count\s+(\d+)/;
-          const match = text.match(pageCountRegex);
-          
-          if (match && match[1]) {
-            const count = parseInt(match[1], 10);
-            setIsLoading(false);
-            resolve(count);
-          } else {
-            setIsLoading(false);
-            console.warn("Could not determine page count");
-            resolve(0);
-          }
-        } catch (error) {
-          setIsLoading(false);
-          console.error("Error counting PDF pages:", error);
-          reject(error);
-        }
-      };
-      
-      reader.onerror = (error) => {
-        setIsLoading(false);
-        reject(error);
-      };
-      
-      reader.readAsArrayBuffer(file);
-    });
-  };
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedPDF(file);
-      try {
-        const count = await countPdfPages(file);
-        setPageCount(count);
-      } catch (error) {
-        console.error("Error counting pages:", error);
-        setPageCount(0);
-      }
+  // Handle redirection using useEffect
+  useEffect(() => {
+    if (redirectUrl) {
+      router.push(redirectUrl);
     }
-  };
+  }, [redirectUrl, router]);
 
-  async function handleSendPDF(event: FormEvent) {
-    event.preventDefault();
-
+  async function handleFormSubmit() {
     if (!selectedPDF) return;
-
-    // Step 1: Get a short-lived upload URL
-    const postUrl = await generateUploadUrl();
     
-    // Step 2: POST the file to the URL
-    const result = await fetch(postUrl, {
-      method: "POST",
-      headers: { "Content-Type": selectedPDF.type },
-      body: selectedPDF,
-    });
-    
-    const { storageId } = await result.json();
-    console.log(storageId);
-    
-    // Step 3: Save the newly allocated storage id and page count to the database
-    const pdfId = await sendPDF({ 
-      fileId: storageId, 
-      filename: selectedPDF.name, 
-      fileSize: selectedPDF.size,
-      pageCount: pageCount || 0
-    });
-
-    setSelectedPDF(null);
-    setPageCount(null);
-    PDFInput.current!.value = "";
-    await processWithMultipleOcrMutation({ pdfId: pdfId });
-    redirect(`/pdf/${pdfId}`);
+    setIsLoading(true);
+    try {
+      // Generate upload URL and upload the PDF
+      const postUrl = await (generateUploadUrl as unknown as GenerateUploadUrlFn)();
+      
+      // Upload the file to storage
+      const result = await fetch(postUrl, {
+        method: "POST",
+        headers: { "Content-Type": selectedPDF.type },
+        body: selectedPDF,
+      });
+      const { storageId } = await result.json();
+      
+      // Save PDF metadata
+      const pdfId = await (sendPDF as unknown as SendPDFFn)({
+        fileId: storageId,
+        filename: selectedPDF.name,
+        fileSize: selectedPDF.size,
+        pageCount: pageCount || 0
+      });
+      
+      // Reset form state
+      setSelectedPDF(null);
+      setPageCount(null);
+      
+      // Start OCR processing in the background
+      (processWithMultipleOcrMutation as unknown as ProcessPDFFn)({ pdfId })
+        .catch(error => console.error("Error processing OCR:", error));
+      
+      // Set redirection URL to trigger navigation
+      setRedirectUrl(`/pdf/${pdfId}`);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error uploading PDF:", error);
+      setIsLoading(false);
+    }
   }
 
   return (
-    <div className="p-4">
-      <form onSubmit={handleSendPDF} className="space-y-4">
-        <div>
-          <input
-            className="bg-amber-950 block w-full p-2 text-white"
-            type="file"
-            accept="application/pdf"
-            ref={PDFInput}
-            onChange={handleFileSelect}
-            disabled={isLoading}
+    <div 
+      className="p-4 flex flex-row justify-center h-screen items-center gap-10"
+      style={{
+        backgroundImage: 'url("/background.png")',
+        backgroundSize: "cover",
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}
+    >
+      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer">
+        <h2 className="text-3xl font-semibold mb-4 text-right">ارفع مستنداتك</h2>
+        <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+          <PDFDropzone
+            selectedPDF={selectedPDF}
+            setSelectedPDF={setSelectedPDF}
+            pageCount={pageCount}
+            setPageCount={setPageCount}
+            isLoading={isLoading}
+            setIsLoading={setIsLoading}
           />
-          {isLoading && <p className="mt-2">Counting pages...</p>}
-          {pageCount !== null && (
-            <p className="mt-2">PDF has {pageCount} pages</p>
-          )}
+          
+          <UploadButton
+            selectedPDF={selectedPDF}
+            isLoading={isLoading}
+            onSubmit={handleFormSubmit}
+          />
+        </form>
+      </section>
+
+      {/* Gold AI card */}
+      <section 
+        className="w-[300px] shadow-lg rounded-2xl p-6 border border-amber-400 h-100 flex flex-col items-center justify-center"
+        style={{ 
+          background: 'linear-gradient(145deg, #d4af37 10%, #b8860b 40%)',
+          boxShadow: '0 10px 25px -5px rgba(180, 130, 20, 0.5)'
+        }}
+      >
+        <h2 className="text-4xl font-bold mb-4 text-white tracking-wide text-center">الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال</h2>
+        
+        <p className="text-white font-medium text-center">
+         تحويل المستندات إلى نصوص عن طريق الذكاء الإصطناعي
+        </p>
+      </section>
+
+      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer">
+        <h2 className="text-3xl font-semibold mb-4 text-right">تحدث مع مستنداتك</h2>
+        <p className="text-white/80 text-right">
+          تحدث مع مستنداتك بأسهل طريقة
+        </p>
+        
+        {/* Chat icon from Lucide */}
+        <div className="flex justify-center my-15">
+          <MessageCircleMore className="w-20 h-20 text-white/80" />
         </div>
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-          disabled={selectedPDF === null || isLoading}
-        >
-          Upload file
-        </button>
-      </form>
+        
+      </section>
     </div>
   );
 }

@@ -4,6 +4,10 @@ import { v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import { Id } from "../../_generated/dataModel";
 import { createPartFromUri, GoogleGenAI, Part } from "@google/genai";
+import { gemini as geminiConfig } from "../../config";
+
+// Define valid status types to match the schema
+type PdfStatus = "processing" | "processed" | "failed" | "uploaded";
 
 interface ProcessPdfResult {
   success: boolean;
@@ -23,7 +27,7 @@ export const processPdfWithOcr = action({
       // 1. Update PDF status to "processing" for Gemini
       await ctx.runMutation(internal.pdf.mutations.updatePdfStatus, {
         pdfId: args.pdfId,
-        status: "processing",
+        status: "processing" as PdfStatus,
         processingError: undefined,
       });
       console.log(`Gemini processing started for PDF: ${args.pdfId}`);
@@ -51,8 +55,8 @@ export const processPdfWithOcr = action({
         throw new Error("Gemini API key (GEMINI_API_KEY) is not configured in Convex environment variables.");
       }
   
-      const ai  = new GoogleGenAI({apiKey: GEMINI_API_KEY});
-      const modelName = "gemini-1.5-flash";
+      const ai = new GoogleGenAI({apiKey: GEMINI_API_KEY});
+      const modelName = geminiConfig.model;
 
       const file = await ai.files.upload({
         file: fileBlob,
@@ -73,24 +77,20 @@ export const processPdfWithOcr = action({
          console.log('File is still processing, retrying in 5 seconds');
  
          await new Promise((resolve) => {
-             setTimeout(resolve, 5000);
+             setTimeout(resolve, geminiConfig.fileProcessingPollingIntervalMs);
          });
      }
      if (file.state === 'FAILED') {
          throw new Error('File processing failed.');
      }
-      // 5. Initialize Gemini API Client
-      // const model = genAI.getGenerativeModel({ model: modelName });
 
       // 6. Create the prompt and file part
-      const prompt : (string | Part)[] =[ "Perform OCR on the PDF document and extract the text content. Return the text content in a structured format, including headers, paragraphs, and tables. Do not change the original language of the document."];
+      const prompt : (string | Part)[] = [geminiConfig.prompt];
       
       if (file.uri && file.mimeType) {
         const fileContent = createPartFromUri(file.uri, file.mimeType);
         prompt.push(fileContent);
     }
-
-
 
       const response = await ai.models.generateContent({
         model: modelName,
@@ -114,20 +114,33 @@ export const processPdfWithOcr = action({
         geminiModel: modelName,
       });
 
-      // 10. Return success status
+      // 10. Immediately trigger OpenAI cleanup without waiting for other OCR services
+      console.log(`Immediately triggering OpenAI cleanup for Gemini OCR results of PDF ${args.pdfId}`);
+      try {
+        // Schedule the OpenAI cleanup action to run after this action completes
+        await ctx.scheduler.runAfter(0, api.ocr.openai.actions.cleanupOcrText, {
+          pdfId: args.pdfId,
+          source: "gemini"
+        });
+      } catch (err) {
+        console.error(`Error scheduling OpenAI cleanup for Gemini results: ${err}`);
+        // Continue with success result even if scheduling cleanup fails
+      }
+
+      // 11. Return success status
       return {
         success: true,
         pdfId: args.pdfId,
         provider: "gemini",
-        textLength: 0,
+        textLength: response.text.length,
       };
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Gemini OCR failed for PDF ${args.pdfId}:`, error);
 
       await ctx.runMutation(internal.pdf.mutations.updatePdfStatus, {
         pdfId: args.pdfId,
-        status: "failed",
+        status: "failed" as PdfStatus,
         processingError: error instanceof Error ? error.message : String(error),
       });
 

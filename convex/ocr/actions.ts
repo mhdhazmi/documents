@@ -65,6 +65,9 @@ export const processWithMultipleOcr = action({
 
       console.log(`Multiple OCR processing finished for PDF ${args.pdfId}: Gemini ${results.gemini.status}, Replicate ${results.replicate.status}`);
 
+      // Note: OpenAI cleanup is now triggered directly by each OCR service when they complete
+      // This way we don't have to wait for both services to complete before starting cleanup
+      
       return results;
 
     } catch (error: unknown) {

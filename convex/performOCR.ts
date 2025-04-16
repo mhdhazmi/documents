@@ -1,5 +1,3 @@
-
-
 // Mutation that runs the internal action and returns the OCR content
 import { internalAction, mutation } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -9,6 +7,7 @@ import {
     createPartFromUri,
     Part
 } from "@google/genai";
+import { gemini as geminiConfig, ocr as ocrConfig } from "./config";
 
 
 export const exposeOCR = mutation({
@@ -25,7 +24,6 @@ export const exposeOCR = mutation({
 });
 
 export const performOCR = internalAction({
-
     args: {
         url: v.string(),
     },
@@ -56,7 +54,7 @@ export const performOCR = internalAction({
             console.log(`current file status: ${getFile.state}`);
             console.log('File is still processing, retrying in 5 seconds');
             await new Promise((resolve) => {
-                setTimeout(resolve, 5000);
+                setTimeout(resolve, geminiConfig.fileProcessingPollingIntervalMs);
             });
         }
 
@@ -66,9 +64,7 @@ export const performOCR = internalAction({
 
         // Add the file to the contents.
         const content: (string | Part)[] = [
-            `Perform OCR on the following document, clean the text and translate it to both English and Arabic
-            text = {'Arabic': string, 'English': string}
-            Return: Array<text>`,
+            ocrConfig.performOcrPrompt,
         ];
 
         if (file.uri && file.mimeType) {
@@ -77,7 +73,7 @@ export const performOCR = internalAction({
         }
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: geminiConfig.model,
             contents: content,
         });
 

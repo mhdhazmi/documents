@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import Replicate from "replicate";
 import { Id } from "../../_generated/dataModel";
+import { replicate as replicateConfig } from "../../config";
 
 // Define interfaces for the types
 interface ProcessPdfResult {
@@ -68,9 +69,7 @@ export const processPdfWithOcr = action({
         throw new Error("Replicate API key (REPLICATE_API_KEY) is not configured in Convex environment variables.");
       }
 
-      const replicateModel = "lucataco/olmocr-7b";
-      const replicateModelVersion = "d96720d5a835ed7b48f2951a5e5f4e247ed724f6fd96c6b96b5c7234f635065f";
-      console.log(`Processing PDF ${args.pdfId} with ${pdf.pageCount} pages using model ${replicateModel}`);
+      console.log(`Processing PDF ${args.pdfId} with ${pdf.pageCount} pages using model ${replicateConfig.model}`);
       
       // Process all pages asynchronously
       console.log(`Starting async processing of all ${pdf.pageCount} pages for PDF ${args.pdfId}`);
@@ -84,16 +83,16 @@ export const processPdfWithOcr = action({
           page_number: pageNumber,
           max_new_tokens: 1024
         };
-        const MAX_RETRIES = 3;
+        
         let retries = 0;
         let success = false;
         let pageOutput;
         
-        while (!success && retries < MAX_RETRIES) {
+        while (!success && retries < replicateConfig.maxRetries) {
           try {
             // Call Replicate API for this page
             pageOutput = await replicate.run(
-              `${replicateModel}:${replicateModelVersion}`, 
+              `${replicateConfig.model}:${replicateConfig.modelVersion}` as `${string}/${string}:${string}`, 
               { input }
             );
             success = true;
@@ -107,9 +106,9 @@ export const processPdfWithOcr = action({
                 typeof error.response.headers === 'object' && 
                 'get' in error.response.headers && 
                 typeof error.response.headers.get === 'function') {
-              const retryAfter = parseInt(error.response.headers.get('retry-after') || '10');
-              console.log(`Rate limited when processing page ${pageNumber}. Retrying after ${retryAfter} seconds (attempt ${retries}/${MAX_RETRIES})`);
-              // Wait for the specified retry-after time (or default to 10 seconds)
+              const retryAfter = parseInt(error.response.headers.get('retry-after') || String(replicateConfig.retryDelayMs / 1000));
+              console.log(`Rate limited when processing page ${pageNumber}. Retrying after ${retryAfter} seconds (attempt ${retries}/${replicateConfig.maxRetries})`);
+              // Wait for the specified retry-after time (or default to configured time)
               await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
             } else {
               // For other errors, throw immediately
@@ -119,19 +118,108 @@ export const processPdfWithOcr = action({
         }
         
         if (!success) {
-          throw new Error(`Failed to process page ${pageNumber} after ${MAX_RETRIES} retries due to rate limits`);
+          throw new Error(`Failed to process page ${pageNumber} after ${replicateConfig.maxRetries} retries due to rate limits`);
         }
         
         // Extract text from this page's output
         let pageExtractedText = "";
         if (pageOutput) {
           if (typeof pageOutput === "string") {
-            pageExtractedText = pageOutput;
+            try {
+              // Try to parse the string as JSON first - Replicate might return a stringified JSON
+              const stringifiedOutput = pageOutput as string;
+              // Check if it looks like a JSON string array
+              if (stringifiedOutput.startsWith('[') && stringifiedOutput.endsWith(']')) {
+                const parsed = JSON.parse(stringifiedOutput);
+                // If it's an array of strings, join them
+                if (Array.isArray(parsed)) {
+                  // Check if any element contains a JSON with natural_text
+                  for (const item of parsed) {
+                    try {
+                      // Try to parse each item as JSON if it's a string
+                      if (typeof item === 'string') {
+                        const parsedItem = JSON.parse(item);
+                        if (parsedItem && parsedItem.natural_text) {
+                          pageExtractedText = parsedItem.natural_text;
+                          break;
+                        }
+                      }
+                    } catch {
+                      // If it's not valid JSON, just use the string itself
+                      continue;
+                    }
+                  }
+                  
+                  // If we didn't find natural_text, just join the array elements
+                  if (!pageExtractedText) {
+                    pageExtractedText = parsed.join("\n");
+                  }
+                }
+              } else {
+                pageExtractedText = stringifiedOutput;
+              }
+            } catch {
+              // If parsing fails, use the string as is
+              pageExtractedText = pageOutput;
+            }
           } else if (Array.isArray(pageOutput)) {
-            pageExtractedText = pageOutput.join("\n");
+            // Handle array output - try to find any item containing natural_text
+            for (const item of pageOutput) {
+              if (typeof item === 'string') {
+                try {
+                  const parsedItem = JSON.parse(item);
+                  if (parsedItem && parsedItem.natural_text) {
+                    pageExtractedText = parsedItem.natural_text;
+                    break;
+                  }
+                } catch {
+                  // Not a valid JSON string, continue to the next item
+                  continue;
+                }
+              }
+            }
+            
+            // If we didn't find natural_text, just join the array elements
+            if (!pageExtractedText) {
+              pageExtractedText = pageOutput.join("\n");
+            }
           } else if (typeof pageOutput === "object" && pageOutput !== null) {
+            // Direct object output
             const outputObj = pageOutput as Record<string, unknown>;
-            if (outputObj.text && typeof outputObj.text === "string") {
+            // First check if the output field exists and contains natural_text
+            if (outputObj.output && typeof outputObj.output === "string") {
+              try {
+                // Try to parse output as JSON string array
+                const outputString = outputObj.output as string;
+                if (outputString.startsWith('[') && outputString.endsWith(']')) {
+                  const parsed = JSON.parse(outputString);
+                  if (Array.isArray(parsed)) {
+                    for (const item of parsed) {
+                      if (typeof item === 'string') {
+                        try {
+                          const parsedItem = JSON.parse(item);
+                          if (parsedItem && parsedItem.natural_text) {
+                            pageExtractedText = parsedItem.natural_text;
+                            break;
+                          }
+                        } catch {
+                          continue;
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch {
+                // If parsing fails, use output as is
+                pageExtractedText = outputObj.output as string;
+              }
+            }
+            // Check if natural_text is directly available
+            else if (outputObj.natural_text && typeof outputObj.natural_text === "string") {
+              pageExtractedText = outputObj.natural_text as string;
+            }
+            // Fall back to text or text_output
+            else if (outputObj.text && typeof outputObj.text === "string") {
               pageExtractedText = outputObj.text;
             } else if (outputObj.text_output && typeof outputObj.text_output === "string") {
               pageExtractedText = outputObj.text_output;
@@ -154,24 +242,23 @@ export const processPdfWithOcr = action({
       };
       
       // Process in batches with limited concurrency
-      const BATCH_SIZE = 3; // Process 3 pages at a time
       const pageResults = [];
       
-      for (let i = 0; i < pdf.pageCount; i += BATCH_SIZE) {
+      for (let i = 0; i < pdf.pageCount; i += replicateConfig.batchSize) {
         const batch = [];
         // Create a batch of promises
-        for (let j = 0; j < BATCH_SIZE && i + j < pdf.pageCount; j++) {
+        for (let j = 0; j < replicateConfig.batchSize && i + j < pdf.pageCount; j++) {
           const pageNumber = i + j + 1; // +1 because pages are 1-indexed
           batch.push(processPage(pageNumber));
         }
         
         // Process this batch concurrently
-        console.log(`Processing batch of ${batch.length} pages (${i+1}-${Math.min(i+BATCH_SIZE, pdf.pageCount)})`);
+        console.log(`Processing batch of ${batch.length} pages (${i+1}-${Math.min(i+replicateConfig.batchSize, pdf.pageCount)})`);
         const batchResults = await Promise.all(batch);
         pageResults.push(...batchResults);
         
         // Optional: add a small delay between batches to avoid rate limits
-        if (i + BATCH_SIZE < pdf.pageCount) {
+        if (i + replicateConfig.batchSize < pdf.pageCount) {
           console.log("Waiting 2 seconds before processing next batch...");
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
@@ -192,9 +279,22 @@ export const processPdfWithOcr = action({
         pdfId: args.pdfId,
         fileId: pdf.fileId,
         extractedText: aggregatedText,
-        replicateModelId: replicateModel,
-        replicateModelVersion,
+        replicateModelId: replicateConfig.model,
+        replicateModelVersion: replicateConfig.modelVersion,
       });
+
+      // Immediately trigger OpenAI cleanup without waiting for other OCR services
+      console.log(`Immediately triggering OpenAI cleanup for Replicate OCR results of PDF ${args.pdfId}`);
+      try {
+        // Schedule the OpenAI cleanup action to run after this action completes
+        await ctx.scheduler.runAfter(0, api.ocr.openai.actions.cleanupOcrText, {
+          pdfId: args.pdfId,
+          source: "replicate"
+        });
+      } catch (err) {
+        console.error(`Error scheduling OpenAI cleanup for Replicate results: ${err}`);
+        // Continue with success result even if scheduling cleanup fails
+      }
 
       // Return success status
       return {
