@@ -32,7 +32,7 @@ const PDFViewer = ({ storageId }: { storageId: string }) => {
     
     return (
         <div 
-            className='flex flex-row items-start justify-center min-h-screen p-4'
+            className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4'
             style={{
                 backgroundImage: 'url("/background.png")',
                 backgroundSize: 'cover',

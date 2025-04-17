@@ -47,48 +47,47 @@ export const cleanupOcrText = action({
       }
       const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
       
-      // Call OpenAI API to clean up the text
-      const response = await openai.chat.completions.create({
+      // Call OpenAI API to clean up the text (streaming)
+      const streamResponse = await openai.chat.completions.create({
         model: openaiConfig.model,
         messages: [
-          {
-            role: "system",
-            content: openaiConfig.systemPrompt
-          },
-          {
-            role: "user",
-            content: `${openaiConfig.userPromptPrefix}${ocrText}`
-          }
+          { role: "system", content: openaiConfig.systemPrompt },
+          { role: "user", content: `${openaiConfig.userPromptPrefix}${ocrText}` }
         ],
         temperature: openaiConfig.temperature,
+        stream: true,
       });
       
-      const cleanedText = response.choices[0]?.message?.content;
-      if (!cleanedText) {
-        throw new Error("OpenAI returned empty response");
-      }
-      
-      // Save the cleaned text to the database
+      // Ensure PDF metadata is available
       const pdf = await ctx.runQuery(api.pdf.queries.getPdf, { pdfId: args.pdfId });
       if (!pdf) {
         throw new Error(`PDF metadata not found for ID: ${args.pdfId}`);
       }
       
-      // Save the cleaned OCR results
-      await ctx.runMutation(internal.ocr.openai.mutations.saveCleanedResults, {
-        pdfId: args.pdfId,
-        fileId: pdf.fileId,
-        originalSource: args.source,
-        cleanedText: cleanedText,
-        openaiModel: openaiConfig.model
-      });
+      // Stream the response and upsert partial results
+      let accumulatedText = "";
+      for await (const part of streamResponse) {
+        const delta = part.choices?.[0]?.delta?.content;
+        if (delta) {
+          accumulatedText += delta;
+          // Save/update cleaned text in DB for live updates
+          await ctx.runMutation(internal.ocr.openai.mutations.saveCleanedResults, {
+            pdfId: args.pdfId,
+            fileId: pdf.fileId,
+            originalSource: args.source,
+            cleanedText: accumulatedText,
+            openaiModel: openaiConfig.model,
+          });
+        }
+      }
       
+      // Return final result
       return {
         success: true,
         pdfId: args.pdfId,
         provider: "openai",
         source: args.source,
-        textLength: cleanedText.length
+        textLength: accumulatedText.length,
       };
       
     } catch (error: unknown) {

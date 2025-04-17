@@ -38,7 +38,7 @@ export default function UploadButton({
     <>
       <button
         type="button"
-        className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed w-full transition-colors border border-white/30"
+        className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed w-full transition-colors border border-white/30 mt-7"
         disabled={selectedPDF === null || isLoading}
         onClick={handleClick}
       >
