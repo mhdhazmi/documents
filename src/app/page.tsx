@@ -6,7 +6,7 @@ import { api } from "../../convex/_generated/api";
 import { useRouter } from 'next/navigation';
 import PDFDropzone from "@/components/PDFDropzone";
 import UploadButton from "@/components/UploadButton";
-import { MessageCircleMore, MessageSquare } from "lucide-react";
+import { MessageCircleMore } from "lucide-react";
 
 // Define types for our mutation functions to avoid 'any'
 type GenerateUploadUrlFn = () => Promise<string>;
@@ -71,6 +71,12 @@ export default function App() {
     }
   }
 
+  // Handle chat card click to navigate to chat page
+  const handleChatCardClick = async () => {
+    // If there's a selected PDF, upload it first and then navigate to chat
+    router.push('/chat');
+  };
+
   return (
     <div 
       className="p-4  flex flex-col md:flex-row justify-center h-screen items-center gap-10"
@@ -116,7 +122,11 @@ export default function App() {
         </p>
       </section>
 
-      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer">
+      {/* Chat card with onClick handler */}
+      <section 
+        className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer"
+        onClick={handleChatCardClick}
+      >
         <h2 className="text-3xl font-semibold mb-4 text-right">تحدث مع مستنداتك</h2>
         <p className="text-white/80 text-right">
           تحدث مع مستنداتك بأسهل طريقة
@@ -126,7 +136,6 @@ export default function App() {
         <div className="flex justify-center my-15">
           <MessageCircleMore className="w-20 h-20 text-white/80" />
         </div>
-        
       </section>
     </div>
   );
