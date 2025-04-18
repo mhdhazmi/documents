@@ -165,7 +165,7 @@ export default function ChatPage() {
             <textarea
               value={messageInput}
               onChange={(e) => setMessageInput(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleKeyDownf
               placeholder="اكتب رسالتك هنا..."
               className="w-full bg-white/10 text-white placeholder-white/50 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               rows={2}
