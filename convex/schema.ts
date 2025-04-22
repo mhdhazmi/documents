@@ -12,27 +12,22 @@ export default defineSchema({
     uploadedAt: v.number(), 
     status: v.string(),
     processingError: v.optional(v.string()), 
-    replicateStatus: v.optional(v.string()),
-    replicateProcessingError: v.optional(v.string()), 
+
   }),
 
   geminiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
-    fileId: v.string(), // StorageId
-    extractedText: v.string(),
-    confidenceScore: v.optional(v.number()),
+    extractedText: v.optional(v.string()),
     processedAt: v.number(),
-    geminiModel: v.string(),
+    ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
   })
   .index("by_pdf_id", ["pdfId"]),
 
   replicateOcrResults: defineTable({
     pdfId: v.id("pdfs"),
-    fileId: v.string(), // StorageId
-    extractedText: v.string(),
+    extractedText: v.optional(v.string()),
     processedAt: v.number(),
-    replicateModelId: v.string(),
-    replicateModelVersion: v.string(),
+    ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
   })
   .index("by_pdf_id", ["pdfId"]),
 
@@ -46,4 +41,23 @@ export default defineSchema({
   })
   .index("by_pdf_id", ["pdfId"])
   .index("by_pdf_and_source", ["pdfId", "originalSource"]),
+
+  chunks: defineTable({
+    documentId: v.id("pdfs"),
+    text: v.string(),
+    embeddingId: v.union(v.id("embeddings"), v.null()),
+  })
+    .index("byDocumentId", ["documentId"])
+    .index("byEmbeddingId", ["embeddingId"]),
+
+
+embeddings: defineTable({
+  embedding: v.array(v.number()),
+  chunkId: v.id("chunks"),
+})
+  .index("byChunkId", ["chunkId"])
+  .vectorIndex("byEmbedding", {
+    vectorField: "embedding",
+    dimensions: 1536,
+  })
 });

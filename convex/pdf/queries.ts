@@ -17,15 +17,7 @@ export const getPdfList = query({
     if (args.status) {
       pdfsQuery = pdfsQuery.filter((q) => q.eq(q.field("status"), args.status));
     }
-    if (args.replicateStatus) {
-      pdfsQuery = pdfsQuery.filter((q) => q.eq(q.field("replicateStatus"), args.replicateStatus));
-    }
-    if (args.filenameContains) {
-
-       console.warn("Filename filtering without a search index might be slow on large datasets.");
-    }
-
-    // Default ordering: Most recently uploaded first.
+    
 
     return await pdfsQuery.order("desc").collect();
   },
@@ -41,7 +33,7 @@ export const getPdf = query({
     if (!pdf) {
 
       console.warn(`PDF with ID ${args.pdfId} not found.`);
-      return null;
+      throw new Error(`PDF with ID ${args.pdfId} not found.`);
     }
     return pdf;
   },

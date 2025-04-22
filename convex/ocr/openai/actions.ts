@@ -14,92 +14,103 @@ interface CleanupResult {
   error?: string;
 }
 
-// Action to clean up OCR text using OpenAI
+// ——————————————————————————————————————————————
+// MODULE‑SCOPE: initialize once per cold start
+// ——————————————————————————————————————————————
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_API_KEY) {
+  throw new Error(
+    "OpenAI API key is not configured – please set OPENAI_API_KEY"
+  );
+}
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+// ——————————————————————————————————————————————
+// MAIN ACTION
+// ——————————————————————————————————————————————
 export const cleanupOcrText = action({
   args: {
     pdfId: v.id("pdfs"),
-    source: v.union(v.literal("gemini"), v.literal("replicate"))
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
   },
-  handler: async (ctx, args): Promise<CleanupResult> => {
+  handler: async (ctx, { pdfId, source }): Promise<CleanupResult> => {
     try {
-      console.log(`Starting OpenAI cleanup for ${args.source} OCR results of PDF ${args.pdfId}`);
-      
-      // Get the OCR results from the specified source (Gemini or Replicate)
-      let ocrText = "";
-      if (args.source === "gemini") {
-        const geminiResults = await ctx.runQuery(api.ocr.gemini.queries.getOcrResults, { pdfId: args.pdfId });
-        if (!geminiResults?.ocrResults?.extractedText) {
-          throw new Error(`No Gemini OCR results found for PDF ${args.pdfId}`);
-        }
-        ocrText = geminiResults.ocrResults.extractedText;
-      } else {
-        const replicateResults = await ctx.runQuery(api.ocr.replicate.queries.getOcrResults, { pdfId: args.pdfId });
-        if (!replicateResults?.ocrResults?.extractedText) {
-          throw new Error(`No Replicate OCR results found for PDF ${args.pdfId}`);
-        }
-        ocrText = replicateResults.ocrResults.extractedText;
+      console.log(
+        `[cleanupOcrText] Starting OpenAI cleanup for ${source} OCR of PDF ${pdfId}`
+      );
+
+      // Kick off both lookups in parallel:
+      const ocrQuery =
+        source === "gemini"
+          ? api.ocr.gemini.queries.getOcrResults
+          : api.ocr.replicate.queries.getOcrResults;
+      const [ocrRes, pdf] = await Promise.all([
+        ctx.runQuery(ocrQuery, { pdfId }),
+        ctx.runQuery(api.pdf.queries.getPdf, { pdfId }),
+      ]);
+
+      if (!ocrRes?.ocrResults?.extractedText) {
+        throw new Error(`No ${source} OCR results for PDF ${pdfId}`);
       }
-      
-      // Initialize OpenAI client
-      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-      if (!OPENAI_API_KEY) {
-        throw new Error("OpenAI API key is not configured in environment variables");
+      if (!pdf) {
+        throw new Error(`PDF metadata not found for ID ${pdfId}`);
       }
-      const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-      
-      // Call OpenAI API to clean up the text (streaming)
-      const streamResponse = await openai.chat.completions.create({
+
+      const rawText = ocrRes.ocrResults.extractedText;
+
+      // Call OpenAI non‑streaming
+      const completion = await openai.chat.completions.create({
         model: openaiConfig.model,
         messages: [
           { role: "system", content: openaiConfig.systemPrompt },
-          { role: "user", content: `${openaiConfig.userPromptPrefix}${ocrText}` }
+          { role: "user", content: openaiConfig.userPromptPrefix + rawText },
         ],
         temperature: openaiConfig.temperature,
-        stream: true,
       });
-      
-      // Ensure PDF metadata is available
-      const pdf = await ctx.runQuery(api.pdf.queries.getPdf, { pdfId: args.pdfId });
-      if (!pdf) {
-        throw new Error(`PDF metadata not found for ID: ${args.pdfId}`);
+
+      const cleanedText =
+        completion.choices?.[0]?.message?.content?.trim() ?? "";
+
+      if (!cleanedText) {
+        throw new Error("OpenAI returned empty cleaned text");
       }
-      
-      // Stream the response and upsert partial results
-      let accumulatedText = "";
-      for await (const part of streamResponse) {
-        const delta = part.choices?.[0]?.delta?.content;
-        if (delta) {
-          accumulatedText += delta;
-          // Save/update cleaned text in DB for live updates
-          await ctx.runMutation(internal.ocr.openai.mutations.saveCleanedResults, {
-            pdfId: args.pdfId,
-            fileId: pdf.fileId,
-            originalSource: args.source,
-            cleanedText: accumulatedText,
-            openaiModel: openaiConfig.model,
-          });
+
+      // Single upsert once fully cleaned
+      await ctx.runMutation(
+        internal.ocr.openai.mutations.saveCleanedResults,
+        {
+          pdfId,
+          fileId: pdf.fileId,
+          originalSource: source,
+          cleanedText,
+          openaiModel: openaiConfig.model,
         }
-      }
-      
-      // Return final result
+      );
+
+      console.log(
+        `[cleanupOcrText] Finished cleaning PDF ${pdfId}, length=${cleanedText.length}`
+      );
       return {
         success: true,
-        pdfId: args.pdfId,
+        pdfId,
         provider: "openai",
-        source: args.source,
-        textLength: accumulatedText.length,
+        source,
+        textLength: cleanedText.length,
       };
-      
-    } catch (error: unknown) {
-      console.error(`Error in OpenAI cleanup for ${args.source} OCR of PDF ${args.pdfId}:`, error);
-      
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : String(err || "Unknown error");
+      console.error(
+        `[cleanupOcrText][ERROR] PDF ${pdfId} (${source}): ${message}`,
+        err
+      );
       return {
         success: false,
-        pdfId: args.pdfId,
+        pdfId: pdfId,
         provider: "openai",
-        source: args.source,
-        error: error instanceof Error ? error.message : String(error)
+        source,
+        error: message,
       };
     }
-  }
-}); 
+  },
+});

@@ -16,7 +16,7 @@ import type {
 import type * as config from "../config.js";
 import type * as files_mutations from "../files/mutations.js";
 import type * as files_queries from "../files/queries.js";
-import type * as ocr_actions from "../ocr/actions.js";
+import type * as ingest_ingest from "../ingest/ingest.js";
 import type * as ocr_gemini_actions from "../ocr/gemini/actions.js";
 import type * as ocr_gemini_mutations from "../ocr/gemini/mutations.js";
 import type * as ocr_gemini_queries from "../ocr/gemini/queries.js";
@@ -29,6 +29,7 @@ import type * as ocr_replicate_queries from "../ocr/replicate/queries.js";
 import type * as pdf_mutations from "../pdf/mutations.js";
 import type * as pdf_queries from "../pdf/queries.js";
 import type * as performOCR from "../performOCR.js";
+import type * as workflowOrch from "../workflowOrch.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -42,7 +43,7 @@ declare const fullApi: ApiFromModules<{
   config: typeof config;
   "files/mutations": typeof files_mutations;
   "files/queries": typeof files_queries;
-  "ocr/actions": typeof ocr_actions;
+  "ingest/ingest": typeof ingest_ingest;
   "ocr/gemini/actions": typeof ocr_gemini_actions;
   "ocr/gemini/mutations": typeof ocr_gemini_mutations;
   "ocr/gemini/queries": typeof ocr_gemini_queries;
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "pdf/mutations": typeof pdf_mutations;
   "pdf/queries": typeof pdf_queries;
   performOCR: typeof performOCR;
+  workflowOrch: typeof workflowOrch;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

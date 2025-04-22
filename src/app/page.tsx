@@ -18,6 +18,7 @@ export default function App() {
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const sendPDF = useMutation(api.pdf.mutations.savePdfMetadata);
   const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
+  const workflowOrchMutation = useMutation(api.workflowOrch.workflowOrchMutation);
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,8 +60,11 @@ export default function App() {
       setPageCount(null);
       
       // Start OCR processing in the background
-      (processWithMultipleOcrMutation as unknown as ProcessPDFFn)({ pdfId })
+      (workflowOrchMutation as unknown as ProcessPDFFn)({ pdfId })
         .catch(error => console.error("Error processing OCR:", error));
+      
+  
+    
       
       // Set redirection URL to trigger navigation
       setRedirectUrl(`/pdf/${pdfId}`);

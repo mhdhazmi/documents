@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OCR PDF Application",
+  title: "تحويل المستندات إلى نصوص",
   description: "PDF OCR processing application",
 };
 

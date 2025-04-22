@@ -15,7 +15,7 @@ export const getFileDownloadUrl = query({
       const url = await ctx.storage.getUrl(args.fileId); 
       if (!url) {
            console.warn(`Could not generate download URL for fileId: ${args.fileId}. File might not exist.`);
-           return null; 
+           throw new Error("Unable to generate download URL right now.");
       }
       return url; 
     } catch (error) {

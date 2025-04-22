@@ -15,17 +15,31 @@ export const getOcrResults = query({
       return null; 
     }
 
-    // 2. Fetch the corresponding Gemini OCR results
 
     const ocrResults = await ctx.db
       .query("geminiOcrResults")
       .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId))
       .first(); 
 
-    // 3. Return a structured result including both PDF info and OCR results (if found)
     return {
       pdf, 
       ocrResults, 
     };
   },
+});
+
+
+export const getOcrStatus = query({
+  args: {
+    pdfId: v.id("geminiOcrResults"),
+  },
+  handler: async (ctx, args) => {
+    const ocrResults = await ctx.db.get(args.pdfId);
+    if (!ocrResults) {
+     throw new Error("PDF not found in Gemini OCR for ID: ${args.pdfId}");
+    }
+    return {ocrStatus: ocrResults.ocrStatus};
+  },
+
+  
 });

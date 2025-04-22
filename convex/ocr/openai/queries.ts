@@ -19,6 +19,8 @@ export const getCleanedResults = query({
     let q = ctx.db
       .query("openaiOcrResults")
       .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId));
+
+
     
     // If source is specified, filter by it
     if (args.source) {
