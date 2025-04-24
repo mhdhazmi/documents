@@ -31,7 +31,8 @@ function OCRfile({ OCRid }: OCRfileProps) {
 
   // Query OpenAI cleaned results
   const openaiResults = useQuery(api.ocr.openai.queries.getCleanedResults, {
-    pdfId: OCRid as PDFId
+    pdfId: OCRid as PDFId,
+    source: "gemini"
   }) as OpenAIResults | null | undefined
   
   // State for edited content

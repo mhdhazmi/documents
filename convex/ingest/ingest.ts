@@ -18,8 +18,8 @@ export const createChunks = internalMutation({
         
         const geminiTextId = await ctx.db
         .query("openaiOcrResults")
-        .withIndex("by_pdf_and_source", q => 
-            q.eq("pdfId", arg.pdfId).eq("originalSource", "gemini"))
+        .withIndex("by_pdf_id", q => 
+            q.eq("pdfId", arg.pdfId))
         .first();
 
         if (!geminiTextId) {

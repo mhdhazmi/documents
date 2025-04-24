@@ -33,14 +33,12 @@ export default defineSchema({
 
   openaiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
-    fileId: v.string(), // StorageId
-    originalSource: v.string(), // "gemini" or "replicate"
     cleanedText: v.string(),
     processedAt: v.number(),
-    openaiModel: v.string(),
+    cleaningStatus:  v.union(v.literal("started"), v.literal("completed")),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
   })
-  .index("by_pdf_id", ["pdfId"])
-  .index("by_pdf_and_source", ["pdfId", "originalSource"]),
+  .index("by_pdf_id", ["pdfId"]),
 
   chunks: defineTable({
     documentId: v.id("pdfs"),

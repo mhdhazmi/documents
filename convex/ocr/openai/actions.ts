@@ -14,9 +14,7 @@ interface CleanupResult {
   error?: string;
 }
 
-// ——————————————————————————————————————————————
-// MODULE‑SCOPE: initialize once per cold start
-// ——————————————————————————————————————————————
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 if (!OPENAI_API_KEY) {
   throw new Error(
@@ -25,9 +23,7 @@ if (!OPENAI_API_KEY) {
 }
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-// ——————————————————————————————————————————————
-// MAIN ACTION
-// ——————————————————————————————————————————————
+
 export const cleanupOcrText = action({
   args: {
     pdfId: v.id("pdfs"),
@@ -80,10 +76,9 @@ export const cleanupOcrText = action({
         internal.ocr.openai.mutations.saveCleanedResults,
         {
           pdfId,
-          fileId: pdf.fileId,
-          originalSource: source,
           cleanedText,
-          openaiModel: openaiConfig.model,
+          cleaningStatus: "completed",
+          source,
         }
       );
 

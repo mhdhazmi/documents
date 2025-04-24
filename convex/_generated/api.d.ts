@@ -13,9 +13,11 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as api_ from "../api.js";
 import type * as config from "../config.js";
 import type * as files_mutations from "../files/mutations.js";
 import type * as files_queries from "../files/queries.js";
+import type * as http from "../http.js";
 import type * as ingest_ingest from "../ingest/ingest.js";
 import type * as ocr_gemini_actions from "../ocr/gemini/actions.js";
 import type * as ocr_gemini_mutations from "../ocr/gemini/mutations.js";
@@ -40,9 +42,11 @@ import type * as workflowOrch from "../workflowOrch.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  api: typeof api_;
   config: typeof config;
   "files/mutations": typeof files_mutations;
   "files/queries": typeof files_queries;
+  http: typeof http;
   "ingest/ingest": typeof ingest_ingest;
   "ocr/gemini/actions": typeof ocr_gemini_actions;
   "ocr/gemini/mutations": typeof ocr_gemini_mutations;

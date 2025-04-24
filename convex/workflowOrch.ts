@@ -10,13 +10,14 @@ export const workflowOrch = internalAction({
     },
     handler: async (ctx, args) => {
         
-        Promise.allSettled([
-    await ctx.runAction(api.ocr.gemini.actions.processPdfWithOcr, { pdfId: args.pdfId }),
-    await ctx.runAction(api.ocr.replicate.actions.processPdfWithOcr, { pdfId: args.pdfId })
-    ])
+        
+await ctx.scheduler.runAfter(0, api.ocr.gemini.actions.processPdfWithOcr, { pdfId: args.pdfId })
+await ctx.scheduler.runAfter(0, api.ocr.replicate.actions.processPdfWithOcr, { pdfId: args.pdfId })
+  
 
-        await ctx.runAction(api.ocr.openai.actions.cleanupOcrText, { pdfId: args.pdfId, source: "gemini" });
-        await ctx.runAction(api.ingest.ingest.chunkAndEmbed, { pdfId: args.pdfId });
+    // await ctx.runAction(api.ocr.openai.actions.cleanupOcrText, { pdfId: args.pdfId, source: "gemini" });
+    // await ctx.runAction(api.ocr.openai.actions.cleanupOcrText, { pdfId: args.pdfId, source: "replicate" });
+    // await ctx.runAction(api.ingest.ingest.chunkAndEmbed, { pdfId: args.pdfId });
     }
 });
 

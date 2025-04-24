@@ -43,3 +43,16 @@ export const getOcrStatus = query({
 
   
 });
+
+
+export const getOcrByPdfId = query({
+  args: {
+    pdfId: v.id("pdfs"),
+  },
+  handler: async (ctx, args) => {
+    return  await ctx.db
+    .query("replicateOcrResults")
+    .withIndex("by_pdf_id", q => q.eq("pdfId", args.pdfId))
+    .collect();
+  }
+})

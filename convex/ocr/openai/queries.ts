@@ -16,24 +16,40 @@ export const getCleanedResults = query({
     }
 
     // Build the query
-    let q = ctx.db
+    const [ocrResults]  = await ctx.db
       .query("openaiOcrResults")
-      .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId));
+      .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId))
+      .collect();
+
+    const cleanedResults = ocrResults.cleanedText;
 
 
-    
-    // If source is specified, filter by it
-    if (args.source) {
-      q = q.filter((q) => q.eq(q.field("originalSource"), args.source));
-    }
-
-    // Get all matching results
-    const ocrResults = await q.collect();
 
     // Return structured result
     return {
-      pdf,
-      ocrResults,
+      cleanedResults,
     };
+  },
+}); 
+
+export const getCleanedId = query({
+  args: {
+    pdfId: v.id("pdfs"),
+    source: v.optional(v.union(v.literal("gemini"), v.literal("replicate"))),
+  },
+  handler: async (ctx, args) => {
+    // Get the PDF document
+    const pdf = await ctx.db.get(args.pdfId);
+    if (!pdf) {
+      console.warn(`PDF not found in openai/getCleanedResults query for ID: ${args.pdfId}`);
+      return null;
+    }
+
+  
+    return await ctx.db
+    .query("openaiOcrResults")
+    .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId))
+    .filter((q) => q.eq(q.field("source"), args.source))
+    .collect();
   },
 }); 
