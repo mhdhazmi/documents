@@ -8,7 +8,7 @@ export async function streamClean(jobId: string, src: "gemini" | "replicate", on
     });
   
     const reader = resp.body!.getReader();
-    const dec = new TextDecoder();
+    const dec = new TextDecoder("utf-8");
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;

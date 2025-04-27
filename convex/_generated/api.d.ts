@@ -22,7 +22,6 @@ import type * as ingest_ingest from "../ingest/ingest.js";
 import type * as ocr_gemini_actions from "../ocr/gemini/actions.js";
 import type * as ocr_gemini_mutations from "../ocr/gemini/mutations.js";
 import type * as ocr_gemini_queries from "../ocr/gemini/queries.js";
-import type * as ocr_openai_actions from "../ocr/openai/actions.js";
 import type * as ocr_openai_mutations from "../ocr/openai/mutations.js";
 import type * as ocr_openai_queries from "../ocr/openai/queries.js";
 import type * as ocr_replicate_actions from "../ocr/replicate/actions.js";
@@ -51,7 +50,6 @@ declare const fullApi: ApiFromModules<{
   "ocr/gemini/actions": typeof ocr_gemini_actions;
   "ocr/gemini/mutations": typeof ocr_gemini_mutations;
   "ocr/gemini/queries": typeof ocr_gemini_queries;
-  "ocr/openai/actions": typeof ocr_openai_actions;
   "ocr/openai/mutations": typeof ocr_openai_mutations;
   "ocr/openai/queries": typeof ocr_openai_queries;
   "ocr/replicate/actions": typeof ocr_replicate_actions;

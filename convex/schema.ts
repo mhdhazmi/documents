@@ -41,19 +41,22 @@ export default defineSchema({
   .index("by_pdf_id", ["pdfId"]),
 
   chunks: defineTable({
-    documentId: v.id("pdfs"),
+    pdfId: v.id("pdfs"),
     text: v.string(),
     embeddingId: v.union(v.id("embeddings"), v.null()),
   })
-    .index("byDocumentId", ["documentId"])
+    .index("byPdfId", ["pdfId"])
     .index("byEmbeddingId", ["embeddingId"]),
 
 
 embeddings: defineTable({
   embedding: v.array(v.number()),
   chunkId: v.id("chunks"),
+  pdfId: v.id("pdfs"),
 })
   .index("byChunkId", ["chunkId"])
+  .index("byPdfId", ["pdfId"])
+
   .vectorIndex("byEmbedding", {
     vectorField: "embedding",
     dimensions: 1536,

@@ -104,3 +104,5 @@ export const ocr = {
         failed: "failed"
     }
 }; 
+
+export const embeddingModel = 'text-embedding-3-large'

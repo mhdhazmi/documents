@@ -12,16 +12,45 @@ export const saveCleanedResults = internalMutation({
 
     
         // Insert new record
-      const resultId = await ctx.db.insert("openaiOcrResults", {
-          pdfId: args.pdfId,
-          cleanedText: args.cleanedText,
-          processedAt: Date.now(),
-          cleaningStatus: args.cleaningStatus,
-          source: args.source,
-        });
+        // patch the results with index pdfId and source
+        const existingJob = await ctx.db.query("openaiOcrResults")
+        .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId))
+        .filter((q) => q.eq(q.field("source"), args.source)).first();
 
-    console.log(`Saved OpenAI cleanup results for PDF ${args.pdfId}. Result ID: ${resultId}`);
-    return resultId;
+        if (existingJob) {
+          console.log("Patching existing record");
+          await ctx.db.patch(existingJob._id, {
+            pdfId: args.pdfId,
+            cleanedText: args.cleanedText,
+            cleaningStatus: args.cleaningStatus,
+            processedAt: Date.now(),
+          });
+          
+        }
+        else {
+          console.log("Inserting new record");
+          await ctx.db.insert("openaiOcrResults", {
+            pdfId: args.pdfId,
+            cleanedText: args.cleanedText,
+            cleaningStatus: args.cleaningStatus,
+            processedAt: Date.now(),
+            source: args.source,
+          });
+        }
+        
+        
+
+
+      // const resultId = await ctx.db.insert("openaiOcrResults", {
+      //     pdfId: args.pdfId,
+      //     cleanedText: args.cleanedText,
+      //     processedAt: Date.now(),
+      //     cleaningStatus: args.cleaningStatus,
+      //     source: args.source,
+      //   });
+
+    // console.log(`Saved OpenAI cleanup results for PDF ${args.pdfId}. Result ID: ${resultId}`);
+
   },
 }); 
 
