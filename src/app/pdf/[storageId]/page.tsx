@@ -54,7 +54,7 @@ const pdfData = useQuery(api.pdf.queries.getPdf, {
         if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
           setG(openaiGeminiResults?.[0]?.cleanedText)
         } else {
-          streamClean(jobId as string, 'gemini', chunk => setG(p => p + chunk))
+          streamClean(jobId as string, 'gemini', chunk => setG(chunk))
         }
       }
       if (jobReplicate?.[0]?.ocrStatus === 'completed' && rBuf === "") {
@@ -62,7 +62,7 @@ const pdfData = useQuery(api.pdf.queries.getPdf, {
         if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
           setR(openaiReplicateResults?.[0]?.cleanedText)
         } else {
-          streamClean(jobId as string, 'replicate', chunk => setR(p => p + chunk))
+          streamClean(jobId as string, 'replicate', chunk => setR(chunk))
         }
       }
     }, [job, jobId, gBuf, rBuf,fileUrl, openaiGeminiResults, openaiReplicateResults, jobReplicate])

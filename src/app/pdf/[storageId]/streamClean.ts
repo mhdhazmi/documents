@@ -1,17 +1,30 @@
 export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
-  console.log("Entering streamClean")
-  console.log(jobId, src)
-    const resp = await fetch("https://hearty-porpoise-965.convex.site/clean", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pdfId: jobId, source: src }),
-    });
+  const resp = await fetch("https://hearty-porpoise-965.convex.site/clean", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pdfId: jobId, source: src }),
+  });
+
+  const reader = resp.body!.getReader();
+  const dec = new TextDecoder("utf-8");
+  let fullText = "";
+  let lastUpdateTime = 0;
   
-    const reader = resp.body!.getReader();
-    const dec = new TextDecoder("utf-8");
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      onChunk(dec.decode(value));
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    
+    const newChunk = dec.decode(value);
+    fullText += newChunk;
+    
+    // Only update every 100ms to reduce jitter
+    const now = Date.now();
+    if (now - lastUpdateTime > 100) {
+      onChunk(fullText);
+      lastUpdateTime = now;
     }
   }
+  
+  // Make sure the final text is shown
+  onChunk(fullText);
+}
