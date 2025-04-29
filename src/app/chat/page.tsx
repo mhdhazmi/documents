@@ -1,90 +1,93 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Id } from '../../../convex/_generated/dataModel';
 import { Send } from 'lucide-react';
-
-interface Message {
-  id: string;
-  content: string;
-  isUser: boolean;
-  timestamp: Date;
-}
 
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const pdfId = searchParams.get('pdfId');
   
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      content: 'مرحباً! كيف يمكنني مساعدتك بخصوص هذا المستند؟',
-      isUser: false,
-      timestamp: new Date(),
-    }
-  ]);
+  const [sessionId, setSessionId] = useState<Id<"chatSessions"> | null>(null);
   const [messageInput, setMessageInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Get PDF data if pdfId is provided
+  // Get PDF data
   const pdfData = useQuery(
     api.pdf.queries.getPdf,
     pdfId ? { pdfId: pdfId as Id<"pdfs"> } : 'skip'
   );
 
-  // Get file URL if fileId is available
+  // Get file URL
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
     pdfData?.fileId ? { fileId: pdfData.fileId } : 'skip'
   );
 
-  // Set the URL when available
+  // Create a chat session
+  const createSession = useMutation(api.serve.serve.createSession);
+  // Get messages for the current session
+  const messagesResult = useQuery(
+    api.serve.serve.getMessages,
+    sessionId ? { sessionId } : 'skip'
+  );
+  const messages = useMemo(() => messagesResult || [], [messagesResult]);
+  
+  // Send message mutation
+  const sendMessage = useMutation(api.serve.serve.send);
+
+  // Create chat session when PDF is selected
   useEffect(() => {
-    if (fileUrl) {
-      setPdfUrl(fileUrl);
-    }
-  }, [fileUrl]);
-
-  // Function to handle sending a message
-  const handleSendMessage = () => {
-    if (!messageInput.trim()) return;
-    
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: messageInput,
-      isUser: true,
-      timestamp: new Date(),
-    };
-    
-    setMessages((prev) => [...prev, userMessage]);
-    setMessageInput('');
-    setIsLoading(true);
-
-    // Simulate AI response after a short delay
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: 'هذه إجابة افتراضية. سيتم استبدالها بوظيفة الدردشة الحقيقية في المستقبل.',
-        isUser: false,
-        timestamp: new Date(),
+    if (pdfId && !sessionId) {
+      const initChat = async () => {
+        try {
+          console.log("Creating session for PDF:", pdfId);
+          const newSessionId = await createSession({ 
+            pdfId: pdfId as Id<"pdfs">,
+          });
+          console.log("Session created successfully:", newSessionId);
+          setSessionId(newSessionId);
+        } catch (error) {
+          console.error("Failed to create chat session:", error);
+          // You could show an error message to the user here
+        }
       };
-      setMessages((prev) => [...prev, aiMessage]);
-      setIsLoading(false);
-    }, 1500);
+      void initChat();
+    }
+  }, [pdfId, sessionId, createSession]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Handle sending a message
+  const handleSendMessage = async () => {
+    if (!messageInput.trim() || !sessionId) return;
+    
+    await sendMessage({ 
+      message: messageInput, 
+      sessionId 
+    });
+    
+    setMessageInput('');
   };
 
   // Handle pressing Enter to send message
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      void handleSendMessage();
     }
   };
+
+  // Determine if the assistant is currently "typing"
+  const isTyping = messages.length > 0 && 
+    messages[messages.length - 1].isUser === false && 
+    messages[messages.length - 1].text === "";
 
   return (
     <div 
@@ -99,9 +102,9 @@ export default function ChatPage() {
       {/* PDF Viewer - Left Side */}
       <div className="w-full md:w-1/2 p-4 h-full">
         <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-2 border border-white/20 h-full">
-          {pdfUrl ? (
+          {fileUrl ? (
             <iframe
-              src={pdfUrl}
+              src={fileUrl}
               title="PDF Viewer"
               width="100%"
               height="100%"
@@ -128,9 +131,19 @@ export default function ChatPage() {
 
           {/* Messages container */}
           <div className="flex-grow overflow-y-auto mb-4 space-y-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent pr-2">
+            {/* Welcome message if no messages yet */}
+            {messages.length === 0 && (
+              <div className="flex justify-start">
+                <div className="bg-white/20 text-white rounded-2xl px-4 py-2">
+                  <p className="text-right">مرحباً! كيف يمكنني مساعدتك بخصوص هذا المستند؟</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Actual messages */}
             {messages.map((message) => (
               <div 
-                key={message.id}
+                key={message._id}
                 className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
               >
                 <div 
@@ -140,14 +153,16 @@ export default function ChatPage() {
                       : 'bg-white/20 text-white'
                   }`}
                 >
-                  <p className="text-right">{message.content}</p>
+                  <p className="text-right">{message.text}</p>
                   <p className={`text-xs mt-1 ${message.isUser ? 'text-emerald-200' : 'text-white/60'} text-right`}>
-                    {message.timestamp.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(message.timestamp).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
             ))}
-            {isLoading && (
+            
+            {/* "Typing" indicator */}
+            {isTyping && (
               <div className="flex justify-start">
                 <div className="bg-white/20 text-white rounded-2xl px-4 py-2">
                   <div className="flex space-x-2 rtl:space-x-reverse">
@@ -158,6 +173,9 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
+            
+            {/* Invisible element to scroll to */}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Message input */}
@@ -170,12 +188,13 @@ export default function ChatPage() {
               className="w-full bg-white/10 text-white placeholder-white/50 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               rows={2}
               dir="rtl"
+              disabled={!sessionId}
             />
             <button
-              onClick={handleSendMessage}
-              disabled={!messageInput.trim() || isLoading}
+              onClick={() => void handleSendMessage()}
+              disabled={!messageInput.trim() || !sessionId || isTyping}
               className={`absolute left-2 bottom-3 p-2 rounded-full ${
-                messageInput.trim() && !isLoading
+                messageInput.trim() && sessionId && !isTyping
                   ? 'bg-emerald-600 text-white'
                   : 'bg-white/20 text-white/50'
               }`}
@@ -187,4 +206,4 @@ export default function ChatPage() {
       </div>
     </div>
   );
-} 
+}

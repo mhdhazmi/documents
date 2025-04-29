@@ -30,6 +30,7 @@ import type * as ocr_replicate_queries from "../ocr/replicate/queries.js";
 import type * as pdf_mutations from "../pdf/mutations.js";
 import type * as pdf_queries from "../pdf/queries.js";
 import type * as performOCR from "../performOCR.js";
+import type * as serve_serve from "../serve/serve.js";
 import type * as workflowOrch from "../workflowOrch.js";
 
 /**
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "pdf/mutations": typeof pdf_mutations;
   "pdf/queries": typeof pdf_queries;
   performOCR: typeof performOCR;
+  "serve/serve": typeof serve_serve;
   workflowOrch: typeof workflowOrch;
 }>;
 export declare const api: FilterApi<

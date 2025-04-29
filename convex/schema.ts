@@ -60,5 +60,23 @@ embeddings: defineTable({
   .vectorIndex("byEmbedding", {
     vectorField: "embedding",
     dimensions: 1536,
-  })
+    filterFields: ["pdfId"],
+  }),
+
+  // Add to schema.ts
+chatSessions: defineTable({
+  pdfId: v.id("pdfs"),
+  userId: v.optional(v.string()), // If you want user-specific chats
+  createdAt: v.number(),
+  lastUpdatedAt: v.number(),
+})
+.index("byPdfId", ["pdfId"]),
+
+messages: defineTable({
+  sessionId: v.id("chatSessions"),
+  isUser: v.boolean(),
+  text: v.string(),
+  timestamp: v.number(),
+})
+.index("bySessionId", ["sessionId"]),
 });
