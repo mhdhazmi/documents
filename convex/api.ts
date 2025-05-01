@@ -9,18 +9,17 @@ import { openai } from "@ai-sdk/openai"
 
 export const cleanHnadler = httpAction(async (ctx, req) => {
     const origin = req.headers.get("Origin") || process.env.CLIENT_ORIGIN!;
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Max-Age": "86400",
+      "Vary": "Origin"
+    };
 
     if (req.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-            "Access-Control-Max-Age": "86400",
-          },
-        });
-      }
+        return new Response(null, { status: 204, headers: corsHeaders });
+    }
 
 
     
@@ -31,10 +30,7 @@ export const cleanHnadler = httpAction(async (ctx, req) => {
 
     const pdf = await ctx.runQuery(api.pdf.queries.getPdf, { pdfId: pdfId });
     if (!pdf) {
-        return new Response("The file does not exist in the database", 
-            { status: 404,
-            headers: { "Access-Control-Allow-Origin": origin },
-         });
+        return new Response("The file does not exist in the database", { status: 404, headers: corsHeaders });
     }
 
     const [geminiId] = await ctx.runQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: pdfId });
@@ -54,10 +50,7 @@ export const cleanHnadler = httpAction(async (ctx, req) => {
     if (source === "gemini") {
         // query the gemini ocr results
         if (geminiOcrStatus !== "completed") {
-            return new Response("Gemini OCR not completed", {
-              status: 400,
-              headers: { "Access-Control-Allow-Origin": origin },
-            });
+            return new Response("Gemini OCR not completed", { status: 400, headers: corsHeaders });
         }
         const geminiOcrResults = await ctx.runQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: pdfId });
         text = geminiOcrResults?.[0]?.extractedText || "";
@@ -65,10 +58,7 @@ export const cleanHnadler = httpAction(async (ctx, req) => {
 
     if (source === "replicate") {
         if (replicateOcrStatus !== "completed") {
-            return new Response("Replicate OCR not completed", {
-              status: 400,
-              headers: { "Access-Control-Allow-Origin": origin },
-            });
+            return new Response("Replicate OCR not completed", { status: 400, headers: corsHeaders });
         }
         // query the replicate ocr results
         const replicateOcrResults = await ctx.runQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId: pdfId });
@@ -76,10 +66,7 @@ export const cleanHnadler = httpAction(async (ctx, req) => {
     }
 
     if (!text) {
-        return new Response("No text found to clean", {
-            status: 400,
-            headers: { "Access-Control-Allow-Origin": origin },
-         });
+        return new Response("No text found to clean", { status: 400, headers: corsHeaders });
     }
 
 
@@ -128,8 +115,7 @@ export const cleanHnadler = httpAction(async (ctx, req) => {
     return new Response(readable, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          "Access-Control-Allow-Origin": process.env.CLIENT_ORIGIN!,
-          "Vary": "Origin"
+          ...corsHeaders,
         },
     });
 })
