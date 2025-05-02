@@ -80,7 +80,7 @@ export const cleanHnadler = httpAction(async (ctx, req) => {
         let full = "";
 
         const {textStream}  = await streamText({
-            model: openai("gpt-4o-mini"),
+            model: openai(openaiConfig.streamingModel),
             system: openaiConfig.systemPrompt,
             prompt: text,
         });

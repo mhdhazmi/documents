@@ -1,6 +1,7 @@
 // convex/schema.ts
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { embedding as embeddingConfig } from "./config";
 
 export default defineSchema({
   // Stores metadata about uploaded PDF files and tracks processing status for each provider.
@@ -59,7 +60,7 @@ embeddings: defineTable({
 
   .vectorIndex("byEmbedding", {
     vectorField: "embedding",
-    dimensions: 3072 ,
+    dimensions: embeddingConfig.dimensions,
     filterFields: ["pdfId"],
   }),
 
@@ -75,4 +76,11 @@ messages: defineTable({
   timestamp: v.number(),
 })
 .index("bySessionId", ["sessionId"]),
+
+ragSources: defineTable({
+  sessionId: v.string(),
+  pdfIds: v.array(v.id("pdfs")),
+})
+.index("bySessionId", ["sessionId"])
+.index("byPdfId", ["pdfIds"]),
 });

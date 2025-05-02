@@ -5,7 +5,7 @@ import { asyncMap } from "modern-async";
 import { internal } from "../_generated/api";
 import { openai } from "@ai-sdk/openai";
 import { embedMany } from "ai";
-import { embeddingModel } from "../config";
+import { embedding as embeddingConfig } from "../config";
 import { Id } from "../_generated/dataModel";
 
 export const createChunks = internalMutation({
@@ -30,8 +30,8 @@ export const createChunks = internalMutation({
         }
 
         const splitter = RecursiveCharacterTextSplitter.fromLanguage("markdown", {
-            chunkSize: 2000,
-            chunkOverlap: 100,
+            chunkSize: embeddingConfig.chunking.chunkSize,
+            chunkOverlap: embeddingConfig.chunking.chunkOverlap,
         });
         const chunks = await splitter.splitText(geminiTextId.cleanedText);
         await asyncMap(chunks, async (chunk) => {
@@ -49,7 +49,7 @@ export async function embedTexts(texts: string[]) {
     if (texts.length === 0) return [];
 
     const {embeddings} = await embedMany({
-        model: openai.embedding(embeddingModel),
+        model: openai.embedding(embeddingConfig.model),
         values: texts,
     })
     return embeddings

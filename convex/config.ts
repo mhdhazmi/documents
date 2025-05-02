@@ -51,7 +51,8 @@ Preserve inline structure (e.g. English terms within Arabic sentences).`
 // OpenAI Configuration
 export const openai = {
     model: "gpt-4o",
-    temperature: 0.3,
+    streamingModel: "gpt-4o", // Used in API streaming endpoints
+    temperature: 0.1,
     systemPrompt: `
     🧹 Final Cleanup Model Prompt (Arabic Text Post-OCR Correction)
 🎯 Objective
@@ -105,4 +106,12 @@ export const ocr = {
     }
 }; 
 
-export const embeddingModel = 'text-embedding-3-large'
+// Embedding configuration
+export const embedding = {
+    model: 'text-embedding-3-large',
+    dimensions: 3072,
+    chunking: {
+        chunkSize: 2000,
+        chunkOverlap: 100
+    }
+};

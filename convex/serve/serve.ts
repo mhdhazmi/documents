@@ -1,7 +1,7 @@
 // convex/chat.ts
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
-import { streamText } from 'ai';
+// import { streamText } from 'ai';
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { embedTexts } from "../ingest/ingest";
@@ -10,6 +10,18 @@ import { asyncMap } from "modern-async";
 import { generateText } from 'ai';
 import { openai } from "@ai-sdk/openai";
 
+
+export const updateRagSources = internalMutation(
+  async (ctx, { sessionId, pdfIds }: { sessionId: string, pdfIds: Id<"pdfs">[] }) => {
+    return await ctx.db.insert("ragSources", { sessionId, pdfIds });
+  }
+);
+
+export const getRagSources = query(
+  async (ctx, { sessionId }: { sessionId: string }) => {
+    return await ctx.db.query("ragSources").withIndex("bySessionId", (q) => q.eq("sessionId", sessionId)).collect();
+  }
+);
 
 export const getChunks = internalQuery(
     async (ctx, { embeddingIds }: { embeddingIds: Id<"embeddings">[] }) => {
@@ -65,7 +77,13 @@ export const answer = internalAction({
 
       console.log(relevantDocuments);
       /// extract pdf ids from relevantDocuments
+      /// filter only to unique pdf ids
       const relevantPdfs = relevantDocuments.map(({ pdfId }) => pdfId);
+      const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
+      await ctx.runMutation(internal.serve.serve.updateRagSources, {
+        sessionId,
+        pdfIds: uniqueRelevantPdfs,
+      });
       const messageId = await ctx.runMutation(internal.serve.serve.addBotMessage, {
         sessionId,
       });
@@ -75,6 +93,27 @@ export const answer = internalAction({
         const {text} = await generateText({
           model: openai('gpt-4o'),
           messages: [
+            {
+              role: "system",
+              content:
+              // extract this prompt to config.ts
+              
+                "Answer the user question based on the provided documents " +
+                "or report that the question cannot be answered based on " +
+                "these documents. Keep the answer informative but brief, " +
+                "do not enumerate all possibilities.",
+            },
+            ...relevantDocuments.map(({ text }) => ({
+              role: "system" as const,
+              content: "Relevant document:\n\n" + text,
+            })) ,
+            ...messages.map(({ isUser, text }) => ({
+              role: (isUser ? "user" : "assistant") as "user" | "assistant",
+              content: text,
+            })) ,
+          ],
+        });
+        console.log([
             {
               role: "system",
               content:
@@ -91,8 +130,7 @@ export const answer = internalAction({
               role: (isUser ? "user" : "assistant") as "user" | "assistant",
               content: text,
             })) ,
-          ],
-        });
+          ],);
         // let text = "";
         // for await (const { choices } of stream) {
         //   const chunk = choices[0].delta.content;

@@ -7,11 +7,18 @@ import { useRouter } from 'next/navigation';
 import PDFDropzone from "@/components/PDFDropzone";
 import UploadButton from "@/components/UploadButton";
 import { MessageCircleMore } from "lucide-react";
+import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
+
 
 // Define types for our mutation functions to avoid 'any'
 type GenerateUploadUrlFn = () => Promise<string>;
 type SendPDFFn = (args: { fileId: string, filename: string, fileSize: number, pageCount: number }) => Promise<string>;
 type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
+
+const words = 'الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال';
+export function TextGenerateEffectDemo() {
+  return <TextGenerateEffect words={words} />;
+}
 
 export default function App() {
   const router = useRouter();
@@ -23,6 +30,11 @@ export default function App() {
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+
+
+  
+
+
 
   // Handle redirection using useEffect
   useEffect(() => {
@@ -119,7 +131,7 @@ export default function App() {
           boxShadow: '0 10px 25px -5px rgba(180, 130, 20, 0.5)'
         }}
       >
-        <h2 className="text-4xl font-bold mb-4 text-white tracking-wide text-center">الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال</h2>
+        <TextGenerateEffectDemo />
         
         <p className="text-white font-medium text-center">
          تحويل المستندات إلى نصوص عن طريق الذكاء الإصطناعي

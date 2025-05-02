@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Sans_Arabic, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import Navigation from "./components/Navigation";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
+  variable: "--font-ibm-plex-sans-arabic",
+  subsets: ["arabic", "latin"],
+  weight: ["100", "200", "300", "400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -25,14 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ar-en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${ibmPlexSansArabic.variable} ${geistMono.variable} antialiased`}
+        style={{ fontFamily: `'IBM Plex Sans Arabic', sans-serif` }}
       >
         <ConvexClientProvider>
-          <div className="min-h-screen flex flex-col">
+          <div className="h-screen flex flex-col overflow-hidden">
             <Navigation />
-            <main className="flex-grow pt-16">
+            <main className="flex-grow mt-16">
               {children}
             </main>
           </div>
