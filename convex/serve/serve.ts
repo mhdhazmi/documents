@@ -23,48 +23,7 @@ interface Chunk {
   embeddingId: Id<"embeddings"> | null;
 }
 
-export const updateRagSources = internalMutation(
-  async (ctx, { sessionId, pdfIds }: { sessionId: string, pdfIds: Id<"pdfs">[] }) => {
-    return await ctx.db.insert("ragSources", { sessionId, pdfIds });
-  }
-);
-
-export const getRagSources = query(
-  async (ctx, { sessionId }: { sessionId: string }) => {
-    return await ctx.db.query("ragSources").withIndex("bySessionId", (q) => q.eq("sessionId", sessionId)).collect();
-  }
-);
-
-export const getChunks = internalQuery(
-  async (ctx, { embeddingIds }: { embeddingIds: Id<"embeddings">[] }) => {
-    return await asyncMap(
-      embeddingIds,
-      async (embeddingId: Id<"embeddings">) =>
-        (await ctx.db
-          .query("chunks")
-          .withIndex("byEmbeddingId", (q) => q.eq("embeddingId", embeddingId))
-          .unique())!
-    );
-  }
-);
-
-export const addBotMessage = internalMutation(
-  async (ctx, { sessionId }: { sessionId: string }) => {
-    return await ctx.db.insert("messages", {
-      isUser: false,
-      text: "",
-      sessionId,
-      timestamp: Date.now(),
-    });
-  }
-);
-
-export const updateBotMessage = internalMutation(
-  async (ctx, { messageId, text }: { messageId: Id<"messages">, text: string }) => {
-    return await ctx.db.patch(messageId, { text });
-  }
-);
-
+// Main answer function implementing streaming with OpenAI
 export const answer = internalAction({
   args: {
     sessionId: v.string(),
@@ -84,53 +43,46 @@ export const answer = internalAction({
     const lastUserMessage = messages.at(-1)!.text;
     console.log("Processing user message:", lastUserMessage);
     
-    // Generate embedding for the query
-    const [embedding] = await embedTexts([lastUserMessage]);
-    
-    // Search for relevant documents
-    const searchResults = await ctx.vectorSearch("embeddings", "byEmbedding", {
-      vector: embedding,
-      limit: 8,
-    });
-
-    if (searchResults.length === 0) {
-      const messageId = await ctx.runMutation(internal.serve.serve.addBotMessage, {
-        sessionId,
-      });
-      
-      await ctx.runMutation(internal.serve.serve.updateBotMessage, {
-        messageId,
-        text: "I couldn't find any relevant information in the documents to answer your question. Could you please rephrase or ask about something covered in the uploaded documents?",
-      });
-      
-      return;
-    }
-
-    // Get the relevant documents
-    const relevantDocuments = await ctx.runQuery(internal.serve.serve.getChunks, {
-      embeddingIds: searchResults.map((result) => result._id),
-    }) as Chunk[];
-
-    console.log(`Found ${relevantDocuments.length} relevant chunks`);
-    
-    // Extract and update PDF IDs
-    const relevantPdfs = relevantDocuments.map((doc) => doc.pdfId);
-    const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
-    
-    await ctx.runMutation(internal.serve.serve.updateRagSources, {
-      sessionId,
-      pdfIds: uniqueRelevantPdfs,
-    });
-    
     // Create a message placeholder for the bot response
     const messageId = await ctx.runMutation(internal.serve.serve.addBotMessage, {
       sessionId,
     });
-    
-    console.log("Created message ID:", messageId);
 
     try {
-      // Initialize the streaming text generation
+      // 1. Search for relevant documents using vector search
+      const [embedding] = await embedTexts([lastUserMessage]);
+      
+      // Search for relevant documents
+      const searchResults = await ctx.vectorSearch("embeddings", "byEmbedding", {
+        vector: embedding,
+        limit: 8,
+      });
+
+      if (searchResults.length === 0) {
+        await ctx.runMutation(internal.serve.serve.updateBotMessage, {
+          messageId,
+          text: "I couldn't find any relevant information in the documents to answer your question. Could you please rephrase or ask about something covered in the uploaded documents?",
+        });
+        return;
+      }
+
+      // Get the relevant documents
+      const relevantDocuments = await ctx.runQuery(internal.serve.serve.getChunks, {
+        embeddingIds: searchResults.map((result) => result._id),
+      }) as Chunk[];
+
+      console.log(`Found ${relevantDocuments.length} relevant chunks`);
+      
+      // Extract and update PDF IDs
+      const relevantPdfs = relevantDocuments.map((doc: Chunk) => doc.pdfId);
+      const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
+      
+      await ctx.runMutation(internal.serve.serve.updateRagSources, {
+        sessionId,
+        pdfIds: uniqueRelevantPdfs,
+      });
+
+      // Use OpenAI's streaming API via Vercel AI SDK
       const result = streamText({
         model: openai('gpt-4o'),
         messages: [
@@ -142,11 +94,11 @@ export const answer = internalAction({
               "these documents. Keep the answer informative but brief, " +
               "do not enumerate all possibilities.",
           },
-          ...relevantDocuments.map((doc) => ({
+          ...relevantDocuments.map((doc: Chunk) => ({
             role: "system" as const,
             content: "Relevant document:\n\n" + doc.text,
           })),
-          ...messages.map((msg) => ({
+          ...messages.map((msg: Message) => ({
             role: (msg.isUser ? "user" : "assistant") as "user" | "assistant",
             content: msg.text,
           })),
@@ -181,6 +133,69 @@ export const answer = internalAction({
   }
 });
 
+// Supporting mutation and query functions
+export const updateRagSources = internalMutation({
+  args: {
+    sessionId: v.string(),
+    pdfIds: v.array(v.id("pdfs")),
+  },
+  handler: async (ctx, { sessionId, pdfIds }) => {
+    return await ctx.db.insert("ragSources", { sessionId, pdfIds });
+  }
+});
+
+// The function that's causing the error - make it a regular query (not internal)
+export const getRagSources = query({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, { sessionId }) => {
+    return await ctx.db.query("ragSources")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .collect();
+  }
+});
+
+export const getChunks = internalQuery({
+  args: {
+    embeddingIds: v.array(v.id("embeddings")),
+  },
+  handler: async (ctx, { embeddingIds }) => {
+    return await asyncMap(
+      embeddingIds,
+      async (embeddingId: Id<"embeddings">) =>
+        (await ctx.db
+          .query("chunks")
+          .withIndex("byEmbeddingId", (q) => q.eq("embeddingId", embeddingId))
+          .unique())!
+    );
+  }
+});
+
+export const addBotMessage = internalMutation({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, { sessionId }) => {
+    return await ctx.db.insert("messages", {
+      isUser: false,
+      text: "",
+      sessionId,
+      timestamp: Date.now(),
+    });
+  }
+});
+
+export const updateBotMessage = internalMutation({
+  args: {
+    messageId: v.id("messages"),
+    text: v.string(),
+  },
+  handler: async (ctx, { messageId, text }) => {
+    return await ctx.db.patch(messageId, { text });
+  }
+});
+
 export const saveMessage = mutation({
   args: {
     message: v.string(),
@@ -192,7 +207,7 @@ export const saveMessage = mutation({
      await ctx.scheduler.runAfter(0, internal.serve.serve.answer, {
       sessionId,
     });
-  },
+  }
 });
 
 export const saveSessionId = mutation({
@@ -201,7 +216,7 @@ export const saveSessionId = mutation({
   },
   handler: async (ctx, { sessionId }) => {
     return await ctx.db.insert("chatSessions", { sessionId });
-  },
+  }
 });
 
 export const retrieveMessages = query({
@@ -209,6 +224,8 @@ export const retrieveMessages = query({
     sessionId: v.string(),
   },
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db.query("messages").withIndex("bySessionId", (q) => q.eq("sessionId", sessionId)).collect();
-  },
+    return await ctx.db.query("messages")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .collect();
+  }
 });
