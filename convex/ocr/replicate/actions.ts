@@ -6,32 +6,6 @@ import Replicate from "replicate";
 import { Id } from "../../_generated/dataModel";
 import { replicate as replicateConfig } from "../../config";
 
-// Define interfaces for the types
-interface ProcessPdfResult {
-  success: boolean;
-  pdfId: Id<"pdfs">;
-  provider: string;
-  pageCount?: number;
-  textLength?: number;
-  error?: string;
-}
-
-interface PdfDocument {
-  fileId: string;
-  filename: string;
-  fileSize: number;
-  pageCount: number;
-  uploadedAt: number;
-  status: string;
-  replicateStatus?: string;
-  replicateProcessingError?: string;
-  processingError?: string;
-}
-
-interface PageResult {
-  pageNumber: number;
-  text: string;
-}
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
@@ -40,27 +14,26 @@ export const processPdfWithOcr = action({
   args: {
     pdfId: v.id("pdfs"),
   },
-  handler: async (ctx, args): Promise<ProcessPdfResult> => {
-    let pdf: PdfDocument | null = null; 
+  handler: async (ctx, args) => {
     try {
-      // 1. Get PDF metadata (including fileId)
-      pdf = await ctx.runQuery(api.pdf.queries.getPdf, { pdfId: args.pdfId });
-      if (!pdf) {
-        throw new Error(`PDF not found with ID: ${args.pdfId}`);
-      }
 
-      // 2. Update status to indicate Replicate processing has started
-      await ctx.runMutation(internal.pdf.mutations.updateReplicateStatus, {
-        pdfId: args.pdfId,
-        replicateStatus: "processing",
-        replicateProcessingError: undefined, 
-      });
-      console.log(`Replicate processing started for PDF: ${pdf.filename} (${args.pdfId})`);
+        const current = await ctx.runQuery(api.pdf.queries.getPdf, { pdfId: args.pdfId });
+        if (!current ) {
+          throw new Error("PDF must be uploaded before OCR.");
+        }
+        
+  
+        // 1. Update PDF status to "processing" for Gemini
+        await ctx.runMutation(internal.ocr.replicate.mutations.updateOcrStatus, {
+          pdfId: args.pdfId as Id<"pdfs">,
+          ocrStatus: "processing",
+        });
+      console.log(`Replicate processing started for PDF:  (${args.pdfId})`);
 
       // 3. Retrieve the file content from Convex storage
-      const fileData = await ctx.storage.getUrl(pdf.fileId);
+      const fileData = await ctx.storage.getUrl(current.fileId);
       if (!fileData) {
-        throw new Error(`PDF file blob not found in storage for fileId: ${pdf.fileId}`);
+        throw new Error(`PDF file blob not found in storage for fileId: ${current.fileId}`);
       }
 
       // Configuration for Replicate
@@ -69,14 +42,14 @@ export const processPdfWithOcr = action({
         throw new Error("Replicate API key (REPLICATE_API_KEY) is not configured in Convex environment variables.");
       }
 
-      console.log(`Processing PDF ${args.pdfId} with ${pdf.pageCount} pages using model ${replicateConfig.model}`);
+      console.log(`Processing PDF ${args.pdfId} with ${current.pageCount} pages using model ${replicateConfig.model}`);
       
       // Process all pages asynchronously
-      console.log(`Starting async processing of all ${pdf.pageCount} pages for PDF ${args.pdfId}`);
+      console.log(`Starting async processing of all ${current.pageCount} pages for PDF ${args.pdfId}`);
       
       // Function to process a single page
-      const processPage = async (pageNumber: number): Promise<PageResult> => {
-        console.log(`Processing page ${pageNumber} of ${pdf!.pageCount} for PDF ${args.pdfId}`);
+      const processPage = async (pageNumber: number) => {
+        console.log(`Processing page ${pageNumber} of ${current!.pageCount} for PDF ${args.pdfId}`);
         
         const input = {
           pdf: fileData,
@@ -233,7 +206,7 @@ export const processPdfWithOcr = action({
           }
         }
         
-        console.log(`Completed processing page ${pageNumber} of ${pdf!.pageCount}. Text length: ${pageExtractedText.length}`);
+        console.log(`Completed processing page ${pageNumber} of ${current!.pageCount}. Text length: ${pageExtractedText.length}`);
         
         return {
           pageNumber,
@@ -244,21 +217,21 @@ export const processPdfWithOcr = action({
       // Process in batches with limited concurrency
       const pageResults = [];
       
-      for (let i = 0; i < pdf.pageCount; i += replicateConfig.batchSize) {
+      for (let i = 0; i < current.pageCount; i += replicateConfig.batchSize) {
         const batch = [];
         // Create a batch of promises
-        for (let j = 0; j < replicateConfig.batchSize && i + j < pdf.pageCount; j++) {
+        for (let j = 0; j < replicateConfig.batchSize && i + j < current.pageCount; j++) {
           const pageNumber = i + j + 1; // +1 because pages are 1-indexed
           batch.push(processPage(pageNumber));
         }
         
         // Process this batch concurrently
-        console.log(`Processing batch of ${batch.length} pages (${i+1}-${Math.min(i+replicateConfig.batchSize, pdf.pageCount)})`);
+        console.log(`Processing batch of ${batch.length} pages (${i+1}-${Math.min(i+replicateConfig.batchSize, current.pageCount)})`);
         const batchResults = await Promise.all(batch);
         pageResults.push(...batchResults);
         
         // Optional: add a small delay between batches to avoid rate limits
-        if (i + replicateConfig.batchSize < pdf.pageCount) {
+        if (i + replicateConfig.batchSize < current.pageCount) {
           console.log("Waiting 2 seconds before processing next batch...");
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
@@ -272,47 +245,26 @@ export const processPdfWithOcr = action({
         `--- PAGE ${page.pageNumber} ---\n${page.text}`
       ).join('\n\n');
       
-      console.log(`Replicate OCR complete for all ${pdf.pageCount} pages of PDF ${args.pdfId}. Total text length: ${aggregatedText.length}`);
+      console.log(`Replicate OCR complete for all ${current.pageCount} pages of PDF ${args.pdfId}. Total text length: ${aggregatedText.length}`);
 
       // Save the aggregated results via internal mutation
-      await ctx.runMutation(internal.ocr.replicate.mutations.saveOcrResults, {
+      await ctx.runMutation(internal.ocr.replicate.mutations.updateOcrResutls, {
         pdfId: args.pdfId,
-        fileId: pdf.fileId,
         extractedText: aggregatedText,
-        replicateModelId: replicateConfig.model,
-        replicateModelVersion: replicateConfig.modelVersion,
+        ocrStatus: "completed",
       });
 
       // Immediately trigger OpenAI cleanup without waiting for other OCR services
       console.log(`Immediately triggering OpenAI cleanup for Replicate OCR results of PDF ${args.pdfId}`);
-      try {
-        // Schedule the OpenAI cleanup action to run after this action completes
-        await ctx.scheduler.runAfter(0, api.ocr.openai.actions.cleanupOcrText, {
-          pdfId: args.pdfId,
-          source: "replicate"
-        });
-      } catch (err) {
-        console.error(`Error scheduling OpenAI cleanup for Replicate results: ${err}`);
-        // Continue with success result even if scheduling cleanup fails
-      }
-
-      // Return success status
-      return {
-        success: true,
-        pdfId: args.pdfId,
-        provider: "replicate",
-        pageCount: pdf.pageCount,
-        textLength: aggregatedText.length,
-      };
+ 
 
     } catch (error) {
       console.error(`Replicate OCR failed for PDF ${args.pdfId}:`, error);
 
       // Update status to 'failed' on any error
-      await ctx.runMutation(internal.pdf.mutations.updateReplicateStatus, {
+      await ctx.runMutation(internal.ocr.replicate.mutations.updateOcrStatus, {
         pdfId: args.pdfId,
-        replicateStatus: "failed",
-        replicateProcessingError: error instanceof Error ? error.message : String(error),
+        ocrStatus: "failed",
       });
 
       return {

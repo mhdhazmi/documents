@@ -47,7 +47,7 @@ export default function UploadButton({
       
       <ConfirmationModal
         isOpen={showConfirmModal}
-        title="Confirm PDF Upload"
+        title="تحذير"
         message="أتعهد بعدم رفع أو مشاركة أي ملفات قد تحتوي على معلومات سريه وقد تعرض هذه الوزارة لأضرارا كبيرة"
         onConfirm={handleConfirm}
         onCancel={handleCancel}

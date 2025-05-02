@@ -1,38 +1,78 @@
 'use client'
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
-import { useQuery } from 'convex/react';
-import { Id } from "../../../../convex/_generated/dataModel";
+import { useQuery } from 'convex/react'
+import { Id } from '../../../../convex/_generated/dataModel'
+import { api } from '../../../../convex/_generated/api'
+import { streamClean } from './streamClean'
+import OCRfile from './OCRfile'
+import PdfPreviewSection from './components/pdfPreviewSection'
 
-import { api } from '../../../../convex/_generated/api';
-import OCRfile from './OCRfile';
-import SkeletonLoader from './components/SkeletonLoader';
+export default function PdfView() {
+  // 1) Extract the dynamic segment directly:
+  const params = useParams()
+  const jobId = params.storageId    // → "jh7fs4hq48ahn54m395mjg0vy17egkt9"
 
-// PDF Viewer component that loads after Suspense
-const PDFViewer = ({ storageId }: { storageId: string }) => {
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  // your data-loading hooks:
+  const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId as Id<'pdfs'> })
+  const jobReplicate = useQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId: jobId as Id<'pdfs'> })
+  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId as Id<'pdfs'>, source: 'gemini' })
+  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId as Id<'pdfs'>, source: 'replicate' })
+
+  const [pdfUrl, setPdfUrl] = useState<string>("");
    
-    // Query the PDF data using the storageId
-    const pdfData = useQuery(api.pdf.queries.getPdf, { 
-        pdfId: storageId as Id<"pdfs"> 
-    });
-   
-    // Get the file URL
-    const fileUrl = useQuery(api.files.queries.getFileDownloadUrl, 
-        pdfData?.fileId ? { fileId: pdfData.fileId } : "skip"
-    );
+  // Query the PDF data using the storageId
+const pdfData = useQuery(api.pdf.queries.getPdf, { 
+    pdfId: jobId as Id<"pdfs"> 
+});
+ 
+  // Get the file URL
+  const fileUrl = useQuery(api.files.queries.getFileDownloadUrl, 
+    pdfData?.fileId ? { fileId: pdfData.fileId } : "skip"
+  );
 
-    // Set the URL when available
+
+
+  const [gBuf, setG] = useState('')
+  const [rBuf, setR] = useState('')
+
+  
+
+  const gText = gBuf || 'يتم الآن تحليل الملف وتحويله إلى نص'
+  const rText = rBuf || 'يتم الآن تحليل الملف وتحويله إلى نص'
+
+
     useEffect(() => {
-        if (fileUrl) {
-            setPdfUrl(fileUrl);
+      if (fileUrl) {
+          setPdfUrl(fileUrl);
+          }
+
+      if (job?.[0]?.ocrStatus === 'completed' && gBuf === "") {
+        console.log("Entering Gemini")
+        if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
+          setG(openaiGeminiResults?.[0]?.cleanedText)
+        } else {
+          streamClean(jobId as string, 'gemini', chunk => setG(chunk))
         }
-    }, [fileUrl]);
+      }
+      if (jobReplicate?.[0]?.ocrStatus === 'completed' && rBuf === "") {
+        console.log("Entering Replicate")
+        if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
+          setR(openaiReplicateResults?.[0]?.cleanedText)
+        } else {
+          streamClean(jobId as string, 'replicate', chunk => setR(chunk))
+        }
+      }
+    }, [job, jobId, gBuf, rBuf,fileUrl, openaiGeminiResults, openaiReplicateResults, jobReplicate])
+
+
+
     
     return (
         <div 
-            className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4'
+            className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4 overflow-y-auto'
             style={{
                 backgroundImage: 'url("/background.png")',
                 backgroundSize: 'cover',
@@ -40,36 +80,14 @@ const PDFViewer = ({ storageId }: { storageId: string }) => {
                 backgroundRepeat: 'no-repeat'
             }}
         >
-            <div className="w-1/2 pr-2">
-                {pdfUrl ? (
-                    <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-2 border border-white/20">
-                        <iframe
-                            src={pdfUrl}
-                            title="PDF Viewer"
-                            width="100%"
-                            height="900px"
-                            style={{ border: 'none', borderRadius: '12px' }}
-                        />
-                    </div>
-                ) : (
-                    <div className="w-full h-[900px] flex items-center justify-center bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 text-white">
-                        Loading PDF...
-                    </div>
-                )}
+            <div className="w-full md:w-1/2 mb-4 md:mb-0">
+                <PdfPreviewSection pdfUrl={pdfUrl}/>
             </div>
-            <div className="w-1/2 pl-2">
-                <OCRfile OCRid={storageId}></OCRfile>
+            <div className="w-full md:w-1/2 pl-0 md:pl-2">
+                <OCRfile textToDisplay={gText} closed={true}></OCRfile>
+                <OCRfile textToDisplay={rText} closed={false}></OCRfile>
             </div>
         </div>
     );
 };
 
-export default function PdfViewerPage() {
-    const { storageId } = useParams<{ storageId: string }>();
-    
-    return (
-        <Suspense fallback={<SkeletonLoader />}>
-            <PDFViewer storageId={storageId} />
-        </Suspense>
-    );
-}

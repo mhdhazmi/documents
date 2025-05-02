@@ -7,21 +7,34 @@ import { useRouter } from 'next/navigation';
 import PDFDropzone from "@/components/PDFDropzone";
 import UploadButton from "@/components/UploadButton";
 import { MessageCircleMore } from "lucide-react";
+import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
+
 
 // Define types for our mutation functions to avoid 'any'
 type GenerateUploadUrlFn = () => Promise<string>;
 type SendPDFFn = (args: { fileId: string, filename: string, fileSize: number, pageCount: number }) => Promise<string>;
 type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
 
+const words = 'الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال';
+function TextGenerateEffectDemo() {
+  return <TextGenerateEffect words={words} />;
+}
+
 export default function App() {
   const router = useRouter();
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const sendPDF = useMutation(api.pdf.mutations.savePdfMetadata);
-  const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
+  // const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
+  const workflowOrchMutation = useMutation(api.workflowOrch.workflowOrchMutation);
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+
+
+  
+
+
 
   // Handle redirection using useEffect
   useEffect(() => {
@@ -59,8 +72,11 @@ export default function App() {
       setPageCount(null);
       
       // Start OCR processing in the background
-      (processWithMultipleOcrMutation as unknown as ProcessPDFFn)({ pdfId })
+      await (workflowOrchMutation as unknown as ProcessPDFFn)({ pdfId })
         .catch(error => console.error("Error processing OCR:", error));
+      
+  
+    
       
       // Set redirection URL to trigger navigation
       setRedirectUrl(`/pdf/${pdfId}`);
@@ -79,7 +95,7 @@ export default function App() {
 
   return (
     <div 
-      className="p-4  flex flex-col md:flex-row justify-center h-screen items-center gap-10"
+      className="flex flex-col md:flex-row justify-center items-center gap-6 min-h-screen md:h-full overflow-auto md:overflow-hidden py-20 md:py-0"
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",
@@ -115,7 +131,7 @@ export default function App() {
           boxShadow: '0 10px 25px -5px rgba(180, 130, 20, 0.5)'
         }}
       >
-        <h2 className="text-4xl font-bold mb-4 text-white tracking-wide text-center">الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال</h2>
+        <TextGenerateEffectDemo />
         
         <p className="text-white font-medium text-center">
          تحويل المستندات إلى نصوص عن طريق الذكاء الإصطناعي

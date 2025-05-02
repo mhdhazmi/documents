@@ -62,7 +62,7 @@ export default function PDFDropzone({
         setPageCount(0);
       }
     }
-  }, [setSelectedPDF, setPageCount]);
+  }, [setSelectedPDF, setPageCount, setIsLoading]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
@@ -133,7 +133,7 @@ export default function PDFDropzone({
         {isLoading && (
           <div className="mt-2 flex items-center justify-center">
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            <span className="ml-2 text-sm text-white/80">Counting pages...</span>
+            <span className="ml-2 text-sm text-white/80">يتم رفع الملف...</span>
           </div>
         )}
         
