@@ -55,28 +55,3 @@ export const updateOcrResutls = internalMutation({
   },
 });
 
-
-// // Internal mutation to save results from Gemini OCR processing.
-// export const saveOcrResults = internalMutation({
-//   args: {
-//     pdfId: v.id("pdfs"),
-//     fileId: v.string(), 
-//     extractedText: v.string(),
-//     confidenceScore: v.optional(v.number()), 
-//     geminiModel: v.string(), 
-//     ocrStatus: v.string(),
-//   },
-//   handler: async (ctx, args) => {
-    
-//     await ctx.db.insert("geminiOcrResults", {
-//           pdfId: args.pdfId,
-//           fileId: args.fileId, 
-//           extractedText: args.extractedText,
-//           confidenceScore: args.confidenceScore,
-//           processedAt: Date.now(), 
-//           geminiModel: args.geminiModel,
-//           ocrStatus: args.ocrStatus,
-//         });
-
-//   },
-// });

@@ -16,9 +16,7 @@ await Promise.allSettled([
 ])
   
 
-    // await ctx.runAction(api.ocr.openai.actions.cleanupOcrText, { pdfId: args.pdfId, source: "gemini" });
-    // await ctx.runAction(api.ocr.openai.actions.cleanupOcrText, { pdfId: args.pdfId, source: "replicate" });
-    // await ctx.runAction(api.ingest.ingest.chunkAndEmbed, { pdfId: args.pdfId });
+  
     }
 });
 

@@ -40,17 +40,6 @@ export const saveCleanedResults = internalMutation({
         
         
 
-
-      // const resultId = await ctx.db.insert("openaiOcrResults", {
-      //     pdfId: args.pdfId,
-      //     cleanedText: args.cleanedText,
-      //     processedAt: Date.now(),
-      //     cleaningStatus: args.cleaningStatus,
-      //     source: args.source,
-      //   });
-
-    // console.log(`Saved OpenAI cleanup results for PDF ${args.pdfId}. Result ID: ${resultId}`);
-
   },
 }); 
 

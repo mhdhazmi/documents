@@ -72,7 +72,7 @@ const pdfData = useQuery(api.pdf.queries.getPdf, {
     
     return (
         <div 
-            className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4'
+            className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4 overflow-y-auto'
             style={{
                 backgroundImage: 'url("/background.png")',
                 backgroundSize: 'cover',
@@ -80,8 +80,10 @@ const pdfData = useQuery(api.pdf.queries.getPdf, {
                 backgroundRepeat: 'no-repeat'
             }}
         >
-            <PdfPreviewSection pdfUrl={pdfUrl}/>
-            <div className="w-1/2 pl-2">
+            <div className="w-full md:w-1/2 mb-4 md:mb-0">
+                <PdfPreviewSection pdfUrl={pdfUrl}/>
+            </div>
+            <div className="w-full md:w-1/2 pl-0 md:pl-2">
                 <OCRfile textToDisplay={gText} closed={true}></OCRfile>
                 <OCRfile textToDisplay={rText} closed={false}></OCRfile>
             </div>
