@@ -14,12 +14,13 @@ export default function Chat() {
   const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
-  const [pdfUrl, setPdfUrl] = useState<string>('');
+  const [pdfUrl, setPdfUrl] = useState<string | null>();
   const router = useRouter();
 
   const clearChat = () => {
     setMessages([]);
     setSessionId(crypto.randomUUID());
+    setPdfUrl(null);
     router.refresh();
   };
 
