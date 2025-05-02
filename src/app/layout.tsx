@@ -32,9 +32,9 @@ export default function RootLayout({
         style={{ fontFamily: `'IBM Plex Sans Arabic', sans-serif` }}
       >
         <ConvexClientProvider>
-          <div className="h-screen flex flex-col overflow-hidden">
+          <div className="min-h-screen flex flex-col">
             <Navigation />
-            <main className="flex-grow mt-16">
+            <main className="flex-grow pt-16">
               {children}
             </main>
           </div>

@@ -28,7 +28,7 @@ export default function Chat() {
   const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string>('');
-  const [pdfUrl, setPdfUrl] = useState<string | null>();
+  const [pdfUrl, setPdfUrl] = useState<string>('');
   const router = useRouter();
 
   // Initialize sessionId after component mounts to avoid SSR issues
@@ -39,21 +39,21 @@ export default function Chat() {
   const clearChat = () => {
     setMessages([]);
     setSessionId(generateUUID());
-    setPdfUrl(null);
+    setPdfUrl('');
     router.refresh();
   };
 
   return (
-    <div className="min-h-screen w-full" style={{
+    <div className="min-h-screen w-full overflow-y-auto" style={{
       backgroundImage: 'url("/background.png")',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
       backgroundAttachment: 'fixed'
     }}>
-      <div className="flex flex-col md:flex-row h-[97vh] pb-8">
+      <div className="flex flex-col md:flex-row min-h-[calc(100vh-4rem)] pb-8">
         <PDFViewer pdfUrl={pdfUrl} />
-        <div className="w-full md:w-1/2 p-4 h-full flex flex-col">
+        <div className="w-full md:w-1/2 p-4 flex flex-col">
           <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-4 border border-white/20 flex-grow flex flex-col overflow-hidden">
             <ChatHeader />
             <ChatMessages sessionId={sessionId} />

@@ -95,7 +95,7 @@ export default function App() {
 
   return (
     <div 
-      className="p-4  flex flex-col md:flex-row justify-center h-screen items-center gap-10"
+      className="p-4 py-8 flex flex-col md:flex-row justify-center min-h-screen items-center gap-10 overflow-y-auto"
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",
