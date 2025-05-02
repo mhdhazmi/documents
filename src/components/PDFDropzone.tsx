@@ -62,7 +62,7 @@ export default function PDFDropzone({
         setPageCount(0);
       }
     }
-  }, [setSelectedPDF, setPageCount]);
+  }, [setSelectedPDF, setPageCount, setIsLoading]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,

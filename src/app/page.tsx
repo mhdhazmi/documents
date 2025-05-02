@@ -16,7 +16,7 @@ type SendPDFFn = (args: { fileId: string, filename: string, fileSize: number, pa
 type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
 
 const words = 'الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال';
-export function TextGenerateEffectDemo() {
+function TextGenerateEffectDemo() {
   return <TextGenerateEffect words={words} />;
 }
 

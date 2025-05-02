@@ -1,6 +1,5 @@
 "use client"
 import ChatMessage from './ChatMessage';
-import TypingIndicator from './TypingIndicator';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 
