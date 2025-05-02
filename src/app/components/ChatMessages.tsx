@@ -25,7 +25,7 @@ export default function ChatMessages({  sessionId }: {  sessionId: string }) {
       {messages && messages.map((message, index) => (
         <ChatMessage key={index} message={message.text} isUser={message.isUser} />
       ))}
-      <TypingIndicator />
+      {/* <TypingIndicator /> */}
       
       {/* Invisible element for scroll reference */}
       <div />

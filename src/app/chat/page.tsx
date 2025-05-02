@@ -25,7 +25,6 @@ const generateUUID = () => {
 };
 
 export default function Chat() {
-  const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [sessionId, setSessionId] = useState<string>('');
   const [pdfUrl, setPdfUrl] = useState<string>('');
@@ -37,24 +36,23 @@ export default function Chat() {
   }, []);
 
   const clearChat = () => {
-    setMessages([]);
     setSessionId(generateUUID());
     setPdfUrl('');
     router.refresh();
   };
 
   return (
-    <div className="min-h-screen w-full overflow-y-auto" style={{
+    <div className="min-h-[calc(100vh-4rem)] md:h-full w-full" style={{
       backgroundImage: 'url("/background.png")',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
       backgroundAttachment: 'fixed'
     }}>
-      <div className="flex flex-col md:flex-row min-h-[calc(100vh-4rem)] pb-8">
+      <div className="flex flex-col md:flex-row h-auto md:h-full">
         <PDFViewer pdfUrl={pdfUrl} />
-        <div className="w-full md:w-1/2 p-4 flex flex-col">
-          <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-4 border border-white/20 flex-grow flex flex-col overflow-hidden">
+        <div className="w-full md:w-1/2 p-3 flex flex-col h-auto md:h-[95%]">
+          <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-3 border border-white/20 flex-grow flex flex-col overflow-auto md:overflow-hidden max-h-[80vh] md:max-h-none">
             <ChatHeader />
             <ChatMessages sessionId={sessionId} />
             <Sources sessionId={sessionId} setPdfUrl={setPdfUrl} />
@@ -64,7 +62,7 @@ export default function Chat() {
                 <ChatInput
                   input={input}
                   setInput={setInput}
-                  setMessages={setMessages}
+                  setMessages={() => {}}
                   sessionId={sessionId}
                 />
               </div>

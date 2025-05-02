@@ -26,15 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar-en">
+    <html lang="ar-en" className="h-full">
       <body
-        className={`${ibmPlexSansArabic.variable} ${geistMono.variable} antialiased`}
+        className={`${ibmPlexSansArabic.variable} ${geistMono.variable} antialiased h-full`}
         style={{ fontFamily: `'IBM Plex Sans Arabic', sans-serif` }}
       >
         <ConvexClientProvider>
-          <div className="min-h-screen flex flex-col">
+          <div className="h-full flex flex-col md:overflow-hidden">
             <Navigation />
-            <main className="flex-grow pt-16">
+            <main className="flex-1 pt-16 overflow-auto md:overflow-hidden">
               {children}
             </main>
           </div>
