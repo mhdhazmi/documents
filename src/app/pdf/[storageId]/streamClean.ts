@@ -1,5 +1,5 @@
 export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
-  const resp = await fetch("https://dusty-meerkat-258.convex.site/chat", {
+  const resp = await fetch(`${process.env.CONVEX_SITE_URL}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pdfId: jobId, source: src }),
