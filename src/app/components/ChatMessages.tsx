@@ -1,16 +1,21 @@
 "use client"
+import { useEffect, useRef } from 'react';
 import ChatMessage from './ChatMessage';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 
 export default function ChatMessages({  sessionId }: {  sessionId: string }) {
-
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const retrieveMessages = useQuery(api.serve.serve.retrieveMessages, { sessionId: sessionId });
 
-
   const messages = retrieveMessages;
   
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   return (
     <div className="flex-grow overflow-y-auto mb-4 space-y-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent pr-2">
       {/* Welcome message */}
@@ -27,7 +32,7 @@ export default function ChatMessages({  sessionId }: {  sessionId: string }) {
       {/* <TypingIndicator /> */}
       
       {/* Invisible element for scroll reference */}
-      <div />
+      <div ref={messagesEndRef} />
     </div>
   );
 }
