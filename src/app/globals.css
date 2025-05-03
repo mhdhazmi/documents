@@ -128,3 +128,34 @@ html, body {
     font-family: 'IBM Plex Sans Arabic', sans-serif;
   }
 }
+
+/* Animation for QR code popup */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutLeft {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.5s ease-out forwards;
+}
+
+.animate-slide-out-left {
+  animation: slideOutLeft 0.5s ease-out forwards;
+}

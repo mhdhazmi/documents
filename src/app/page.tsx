@@ -8,7 +8,7 @@ import PDFDropzone from "@/components/PDFDropzone";
 import UploadButton from "@/components/UploadButton";
 import { MessageCircleMore } from "lucide-react";
 import { TextGenerateEffect } from "@/components/ui/text-generate-effect";
-
+import QRCodePopup from "@/components/QRCodePopup";
 
 // Define types for our mutation functions to avoid 'any'
 type GenerateUploadUrlFn = () => Promise<string>;
@@ -30,11 +30,7 @@ export default function App() {
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
-
-
-  
-
-
+  const [showQRPopup, setShowQRPopup] = useState(true);
 
   // Handle redirection using useEffect
   useEffect(() => {
@@ -75,9 +71,6 @@ export default function App() {
       await (workflowOrchMutation as unknown as ProcessPDFFn)({ pdfId })
         .catch(error => console.error("Error processing OCR:", error));
       
-  
-    
-      
       // Set redirection URL to trigger navigation
       setRedirectUrl(`/pdf/${pdfId}`);
       setIsLoading(false);
@@ -95,7 +88,7 @@ export default function App() {
 
   return (
     <div 
-      className="flex flex-col md:flex-row justify-center items-center gap-6 min-h-screen md:h-full overflow-auto md:overflow-hidden py-20 md:py-0"
+      className="flex flex-col md:flex-row justify-center items-center gap-6 min-h-screen md:h-full overflow-auto md:overflow-hidden py-20 md:py-0 relative"
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",
@@ -153,6 +146,9 @@ export default function App() {
           <MessageCircleMore className="w-20 h-20 text-white/80" />
         </div>
       </section>
+
+      {/* QR Code Popup Component */}
+      {showQRPopup && <QRCodePopup onClose={() => setShowQRPopup(false)} />}
     </div>
   );
 }
