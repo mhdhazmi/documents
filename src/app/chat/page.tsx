@@ -57,7 +57,7 @@ export default function Chat() {
             <ChatMessages sessionId={sessionId} />
             <Sources sessionId={sessionId} setPdfUrl={setPdfUrl} />
             
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 justify-center">
               <div className="max-w-[600px] flex-1">
                 <ChatInput
                   input={input}
