@@ -1,9 +1,19 @@
 export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
-  const resp = await fetch("https://dusty-meerkat-258.convex.site/chat", {
+  const resp = await fetch("https://dusty-meerkat-258.convex.site/clean", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json",
+          "Origin": window.location.origin
+    },
     body: JSON.stringify({ pdfId: jobId, source: src }),
   });
+
+
+  if (!resp.ok) {
+    // Handle error responses
+    const errorText = await resp.text();
+    console.error("Error from clean endpoint:", errorText);
+    throw new Error(`Error from server: ${resp.status} - ${errorText}`);
+  }
 
   const reader = resp.body!.getReader();
   const dec = new TextDecoder("utf-8");
