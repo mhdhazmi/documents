@@ -1,8 +1,11 @@
 export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
-  const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL}/clean`, {
+  console.log("streamClean", jobId, src);
+  console.log(window.location.origin);
+  console.log(process.env.NEXT_PUBLIC_CONVEX_URL_HTTP);
+  const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL_HTTP}/clean`, {
     method: "POST",
     headers: { "Content-Type": "application/json",
-          "Origin": window.location.origin
+                    "Origin": window.location.origin
     },
     body: JSON.stringify({ pdfId: jobId, source: src }),
   });

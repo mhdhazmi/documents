@@ -13,7 +13,9 @@ const getCorsHeaders = (request: Request): Record<string, string> => {
   // If the origin is from our allowed domains, return that specific origin
   // This is more secure than using a wildcard
   const allowedOrigins = [
-    "http://localhost:3000",           // Local development
+    "http://localhost:3000",
+    
+    "http://localhost:3001",           // Local development
     "https://your-production-domain.com", // Production
     process.env.CLIENT_ORIGIN || ""    // Environment variable if set
   ].filter(Boolean);
