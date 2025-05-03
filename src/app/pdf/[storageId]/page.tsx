@@ -1,3 +1,4 @@
+// src/app/pdf/[storageId]/page.tsx
 'use client'
 
 import React, { useState, useEffect } from 'react';
@@ -7,6 +8,7 @@ import { Id } from '../../../../convex/_generated/dataModel';
 import { api } from '../../../../convex/_generated/api';
 import { streamClean } from './streamClean';
 import OCRFilePreview from './OCRfile';
+import OCRFileLoading from './components/OCRFileLoading';
 import PdfPreviewSection from './components/pdfPreviewSection';
 import { OCRResult } from '../../../../convex/ocrSchema';
 
@@ -20,7 +22,7 @@ export default function PdfView() {
   const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId as Id<'pdfs'>, source: 'gemini' });
   const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId as Id<'pdfs'>, source: 'replicate' });
 
-  // State for the PDF URL and OCR results
+  // State for the PDF URL
   const [pdfUrl, setPdfUrl] = useState<string>("");
   
   // Query PDF data
@@ -33,19 +35,34 @@ export default function PdfView() {
     pdfData?.fileId ? { fileId: pdfData.fileId } : "skip"
   );
 
-  // State for OCR results
+  // State for OCR results with granular loading states
   const [geminiResult, setGeminiResult] = useState<OCRResult>({
     arabic: "",
     english: "",
-    keywordsArabic: [], // Ensure initialized as empty array
-    keywordsEnglish: [] // Ensure initialized as empty array
+    keywordsArabic: [],
+    keywordsEnglish: []
   });
   
   const [replicateResult, setReplicateResult] = useState<OCRResult>({
     arabic: "",
     english: "",
-    keywordsArabic: [], // Ensure initialized as empty array
-    keywordsEnglish: [] // Ensure initialized as empty array
+    keywordsEnglish: [],
+    keywordsArabic: []
+  });
+
+  // Granular loading states for each component
+  const [geminiState, setGeminiState] = useState({
+    loading: true,
+    arabicReady: false,
+    englishReady: false,
+    keywordsReady: false
+  });
+  
+  const [replicateState, setReplicateState] = useState({
+    loading: true,
+    arabicReady: false,
+    englishReady: false,
+    keywordsReady: false
   });
 
   useEffect(() => {
@@ -55,7 +72,7 @@ export default function PdfView() {
     }
 
     // Process Gemini results
-    if (job?.[0]?.ocrStatus === 'completed' && geminiResult.arabic === "") {
+    if (job?.[0]?.ocrStatus === 'completed') {
       if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
         // Set from database if available
         setGeminiResult({
@@ -64,14 +81,33 @@ export default function PdfView() {
           keywordsArabic: openaiGeminiResults[0].arabicKeywords || [],
           keywordsEnglish: openaiGeminiResults[0].englishKeywords || []
         });
+        
+        // Mark all components as ready
+        setGeminiState({
+          loading: false,
+          arabicReady: true,
+          englishReady: !!openaiGeminiResults[0].englishText,
+          keywordsReady: !!(openaiGeminiResults[0].arabicKeywords?.length || openaiGeminiResults[0].englishKeywords?.length)
+        });
       } else {
         // Stream from API
-        streamClean(jobId as string, 'gemini', result => setGeminiResult(result));
+        streamClean(jobId as string, 'gemini', result => {
+          setGeminiResult(prev => ({...prev, ...result}));
+          
+          // Update component states as they become ready
+          setGeminiState(prev => ({
+            ...prev,
+            loading: false,
+            arabicReady: !!result.arabic,
+            englishReady: !!result.english,
+            keywordsReady: !!(result.keywordsArabic?.length || result.keywordsEnglish?.length)
+          }));
+        });
       }
     }
     
     // Process Replicate results
-    if (jobReplicate?.[0]?.ocrStatus === 'completed' && replicateResult.arabic === "") {
+    if (jobReplicate?.[0]?.ocrStatus === 'completed') {
       if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
         // Set from database if available
         setReplicateResult({
@@ -80,12 +116,76 @@ export default function PdfView() {
           keywordsArabic: openaiReplicateResults[0].arabicKeywords || [],
           keywordsEnglish: openaiReplicateResults[0].englishKeywords || []
         });
+        
+        // Mark all components as ready
+        setReplicateState({
+          loading: false,
+          arabicReady: true,
+          englishReady: !!openaiReplicateResults[0].englishText,
+          keywordsReady: !!(openaiReplicateResults[0].arabicKeywords?.length || openaiReplicateResults[0].englishKeywords?.length)
+        });
       } else {
         // Stream from API
-        streamClean(jobId as string, 'replicate', result => setReplicateResult(result));
+        streamClean(jobId as string, 'replicate', result => {
+          setReplicateResult(prev => ({...prev, ...result}));
+          
+          // Update component states as they become ready
+          setReplicateState(prev => ({
+            ...prev,
+            loading: false,
+            arabicReady: !!result.arabic,
+            englishReady: !!result.english,
+            keywordsReady: !!(result.keywordsArabic?.length || result.keywordsEnglish?.length)
+          }));
+        });
       }
     }
-  }, [job, jobId, fileUrl, openaiGeminiResults, openaiReplicateResults, jobReplicate, geminiResult.arabic, replicateResult.arabic]);
+  }, [job, jobId, fileUrl, openaiGeminiResults, openaiReplicateResults, jobReplicate]);
+
+  // Render OCR results with intelligent loading components
+  const renderGeminiOCR = () => {
+    if (geminiState.loading) {
+      return <OCRFileLoading closed={true} />;
+    }
+    
+    if (geminiState.arabicReady) {
+      return (
+        <OCRFilePreview 
+          ocrResult={{
+            arabic: geminiResult.arabic,
+            english: geminiState.englishReady ? geminiResult.english : "",
+            keywordsArabic: geminiState.keywordsReady ? geminiResult.keywordsArabic : [],
+            keywordsEnglish: geminiState.keywordsReady ? geminiResult.keywordsEnglish : []
+          }} 
+          closed={true}
+        />
+      );
+    }
+    
+    return <OCRFileLoading closed={true} />;
+  };
+  
+  const renderReplicateOCR = () => {
+    if (replicateState.loading) {
+      return <OCRFileLoading closed={false} />;
+    }
+    
+    if (replicateState.arabicReady) {
+      return (
+        <OCRFilePreview 
+          ocrResult={{
+            arabic: replicateResult.arabic,
+            english: replicateState.englishReady ? replicateResult.english : "",
+            keywordsArabic: replicateState.keywordsReady ? replicateResult.keywordsArabic : [],
+            keywordsEnglish: replicateState.keywordsReady ? replicateResult.keywordsEnglish : []
+          }} 
+          closed={false}
+        />
+      );
+    }
+    
+    return <OCRFileLoading closed={false} />;
+  };
 
   return (
     <div 
@@ -101,8 +201,8 @@ export default function PdfView() {
         <PdfPreviewSection pdfUrl={pdfUrl}/>
       </div>
       <div className="w-full md:w-1/2 pl-0 md:pl-2">
-        <OCRFilePreview ocrResult={geminiResult} closed={true}/>
-        <OCRFilePreview ocrResult={replicateResult} closed={false}/>
+        {renderGeminiOCR()}
+        {renderReplicateOCR()}
       </div>
     </div>
   );
