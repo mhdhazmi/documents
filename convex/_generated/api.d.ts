@@ -27,6 +27,7 @@ import type * as ocr_openai_queries from "../ocr/openai/queries.js";
 import type * as ocr_replicate_actions from "../ocr/replicate/actions.js";
 import type * as ocr_replicate_mutations from "../ocr/replicate/mutations.js";
 import type * as ocr_replicate_queries from "../ocr/replicate/queries.js";
+import type * as ocrSchema from "../ocrSchema.js";
 import type * as pdf_mutations from "../pdf/mutations.js";
 import type * as pdf_queries from "../pdf/queries.js";
 import type * as performOCR from "../performOCR.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   "ocr/replicate/actions": typeof ocr_replicate_actions;
   "ocr/replicate/mutations": typeof ocr_replicate_mutations;
   "ocr/replicate/queries": typeof ocr_replicate_queries;
+  ocrSchema: typeof ocrSchema;
   "pdf/mutations": typeof pdf_mutations;
   "pdf/queries": typeof pdf_queries;
   performOCR: typeof performOCR;

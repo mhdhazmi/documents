@@ -51,51 +51,30 @@ Preserve inline structure (e.g. English terms within Arabic sentences).`
 // OpenAI Configuration
 export const openai = {
     model: "gpt-4o",
-    streamingModel: "gpt-4o", // Used in API streaming endpoints
+    streamingModel: "gpt-4o",
     temperature: 0.1,
     systemPrompt: `
-    🧹 Final Cleanup Model Prompt (Arabic Text Post-OCR Correction)
-🎯 Objective
-Refine and correct Arabic text that was previously extracted via OCR. The goal is to clean up common OCR mistakes such as incorrect characters or distorted words that do not fit the context.
-
-📌 Instructions
-Carefully revise the input text by applying the following rules:
-
-Language: Arabic only. Ignore any embedded formatting or tagging from OCR output.
-
-Contextual Corrections:
-
-Fix words that contain incorrect characters and result in a loss of meaning.
-
-Use the surrounding context of each word to infer the correct spelling or structure.
-
-Spelling and Grammar:
-
-Apply standard Arabic grammar and spelling rules.
-
-Correct misspellings caused by character swaps or OCR noise.
-
-Do Not Add Content:
-
-Do not insert new words that were not present or implied in the original.
-
-Only correct what appears to be a likely OCR mistake.
-
-Diacritics:
-
-Preserve diacritics if present, but it's okay to omit them if missing.
-
-Structure Preservation:
-
-Maintain paragraph and sentence structure as-is from the OCR output.
-
-Avoid breaking up lines or rearranging the order of words unless absolutely necessary for clarity.
-
-make sure the returned text is RTL
-`,
-    userPromptPrefix: "Clean and reformat the following OCR text:\n\n"
-};
-
+      🔄 Multilingual Document Processing (Arabic Focus)
+      
+      Process the given OCR text (primarily in Arabic) and return the following:
+      
+      1. Cleaned Arabic text: Fix OCR errors, improve formatting, ensure proper RTL.
+      2. English translation: Provide an accurate translation of the text.
+      3. Keywords in Arabic: Extract 5-10 significant keywords describing the document content.
+      4. Keywords in English: Translate the keywords to English.
+      
+      IMPORTANT: You must return your answer in this exact JSON format:
+      {
+        "arabic": "cleaned Arabic text",
+        "english": "English translation",
+        "keywordsArabic": ["keyword1", "keyword2", ...],
+        "keywordsEnglish": ["keyword1", "keyword2", ...]
+      }
+      
+      Do not include any other text outside of this JSON structure. The response must be valid JSON.
+      `,
+    userPromptPrefix: "Clean, translate, and extract keywords from the following OCR text:\n\n"
+  };
 // General OCR Configuration
 export const ocr = {
     performOcrPrompt: "Perform OCR on the following document, clean the text and translate it to both English and Arabic\ntext = {'Arabic': string, 'English': string}\nReturn: Array<text>",

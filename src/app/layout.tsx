@@ -34,7 +34,7 @@ export default function RootLayout({
         <ConvexClientProvider>
           <div className="h-full flex flex-col md:overflow-hidden">
             <Navigation />
-            <main className="flex-1 pt-16 overflow-auto md:overflow-hidden">
+            <main className="flex-1 pt-16 overflow-auto ">
               {children}
             </main>
           </div>

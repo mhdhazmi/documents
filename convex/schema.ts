@@ -35,8 +35,11 @@ export default defineSchema({
   openaiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     cleanedText: v.string(),
+    englishText: v.optional(v.string()),
+    arabicKeywords: v.optional(v.array(v.string())),
+    englishKeywords: v.optional(v.array(v.string())),
     processedAt: v.number(),
-    cleaningStatus:  v.union(v.literal("started"), v.literal("completed")),
+    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
     source: v.union(v.literal("gemini"), v.literal("replicate")),
   })
   .index("by_pdf_id", ["pdfId"]),
