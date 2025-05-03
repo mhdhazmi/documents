@@ -1,5 +1,5 @@
 export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
-  const resp = await fetch("https://dusty-meerkat-258.convex.site/clean", {
+  const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL}/clean`, {
     method: "POST",
     headers: { "Content-Type": "application/json",
           "Origin": window.location.origin
