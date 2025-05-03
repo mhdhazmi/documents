@@ -4,9 +4,8 @@ import { api, internal } from "./_generated/api";
 import { openai as openaiConfig } from "./config";
 import { streamText } from 'ai';
 import { openai } from "@ai-sdk/openai";
-
 // Centralized CORS headers function to ensure consistency
-const getCorsHeaders = (request) => {
+const getCorsHeaders = (request: Request): Record<string, string> => {
   // Get the origin from the request or fall back to configured origin
   const requestOrigin = request.headers.get("Origin");
   
