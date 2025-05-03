@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { cleanHnadler } from "./api";
+import { cleanHandler } from "./api";
 
 const http = httpRouter();
 
@@ -7,12 +7,12 @@ const http = httpRouter();
 http.route({
   path: "/clean",
   method: "POST",
-  handler: cleanHnadler
+  handler: cleanHandler
 });
 http.route({
   path: "/clean",
   method: "OPTIONS",
-  handler: cleanHnadler   // httpAction will catch OPTIONS itself
+  handler: cleanHandler   // httpAction will catch OPTIONS itself
 });
 
 export default http;
