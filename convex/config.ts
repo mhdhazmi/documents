@@ -5,7 +5,7 @@
 export const replicate = {
     model: "lucataco/olmocr-7b",
     modelVersion: "d96720d5a835ed7b48f2951a5e5f4e247ed724f6fd96c6b96b5c7234f635065f",
-    batchSize: 5,
+    batchSize: 7,
     maxRetries: 3,
     retryDelayMs: 10000, // default retry delay in ms if not specified by API
     timeoutMs: 5000, // timeout between polling requests
@@ -50,8 +50,8 @@ Preserve inline structure (e.g. English terms within Arabic sentences).`
 
 // OpenAI Configuration
 export const openai = {
-    model: "gpt-4o",
-    streamingModel: "gpt-4o", // Used in API streaming endpoints
+    model: "gpt-4o-mini",
+    streamingModel: "gpt-4o-mini", // Used in API streaming endpoints
     temperature: 0.1,
     systemPrompt: `
     🧹 Final Cleanup Model Prompt (Arabic Text Post-OCR Correction)
@@ -108,10 +108,10 @@ export const ocr = {
 
 // Embedding configuration
 export const embedding = {
-    model: 'text-embedding-3-large',
-    dimensions: 3072,
+    model: 'text-embedding-3-small',
+    dimensions: 1536,
     chunking: {
-        chunkSize: 2000,
-        chunkOverlap: 100
+        chunkSize: 8000,
+        chunkOverlap: 500
     }
 };
