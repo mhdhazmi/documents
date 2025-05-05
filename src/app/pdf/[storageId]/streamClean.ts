@@ -1,4 +1,9 @@
-export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
+export async function streamClean(
+  jobId: string, 
+  src: "gemini" | "replicate", 
+  onChunk: (c: string) => void,
+  onError?: (error: Error) => void
+): Promise<void> {
   console.log(`Starting stream cleaning for ${src} OCR of PDF ${jobId}`);
   
   try {
@@ -26,6 +31,9 @@ export async function streamClean(jobId: string, src: "gemini" | "replicate", on
     let fullText = "";
     let lastUpdateTime = 0;
     
+    // Start with an empty update to indicate streaming has begun
+    onChunk("");
+    
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -52,6 +60,12 @@ export async function streamClean(jobId: string, src: "gemini" | "replicate", on
     console.log(`Completed stream cleaning for ${src} OCR of PDF ${jobId}`);
   } catch (error) {
     console.error(`Stream clean error for ${src} OCR of PDF ${jobId}:`, error);
-    throw error;
+    if (onError && error instanceof Error) {
+      onError(error);
+    } else if (error instanceof Error) {
+      throw error;
+    } else {
+      throw new Error(String(error));
+    }
   }
 }
