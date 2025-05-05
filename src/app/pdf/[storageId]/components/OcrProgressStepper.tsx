@@ -5,6 +5,7 @@ import { CheckCircle, Clock, Loader2 } from 'lucide-react';
 export type OcrStep = 'uploaded' | 'processing' | 'streaming' | 'completed';
 
 interface OcrStepInfo {
+  key: OcrStep;
   label: string;
   icon: React.ReactNode;
   status: 'completed' | 'current' | 'pending';
