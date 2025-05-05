@@ -1,10 +1,4 @@
-// src/app/pdf/[storageId]/streamClean.ts
-export async function streamClean(
-  jobId: string, 
-  src: "gemini" | "replicate", 
-  onChunk: (c: string) => void,
-  onError?: (error: Error) => void
-): Promise<void> {
+export async function streamClean(jobId: string, src: "gemini" | "replicate", onChunk: (c: string) => void) {
   console.log(`Starting stream cleaning for ${src} OCR of PDF ${jobId}`);
   
   try {
@@ -58,12 +52,6 @@ export async function streamClean(
     console.log(`Completed stream cleaning for ${src} OCR of PDF ${jobId}`);
   } catch (error) {
     console.error(`Stream clean error for ${src} OCR of PDF ${jobId}:`, error);
-    if (onError && error instanceof Error) {
-      onError(error);
-    } else if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error(String(error));
-    }
+    throw error;
   }
 }

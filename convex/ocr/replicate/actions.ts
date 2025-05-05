@@ -6,6 +6,101 @@ import Replicate from "replicate";
 import { Id } from "../../_generated/dataModel";
 import { replicate as replicateConfig } from "../../config";
 
+// Add this function at the top to extract OCR text from Replicate responses
+// Updated extractOCRText function for ocr/replicate/actions.ts
+function extractOCRText(replicateOutput: unknown): string {
+  try {
+    // Case 1: If the output is already a string that's a JSON representation
+    if (typeof replicateOutput === 'string') {
+      try {
+        // Try to extract content from JSON string inside the string
+        // This handles when the API returns a JSON string directly
+        const parsedObj = JSON.parse(replicateOutput);
+        if (parsedObj && typeof parsedObj.natural_text === 'string') {
+          return parsedObj.natural_text;
+        }
+      } catch (jsonParseError) {
+        // If direct JSON parsing fails, look for JSON-like patterns
+        const match = replicateOutput.match(/natural_text['"]\s*:\s*['"]([^'"]+)['"]/);
+        if (match && match[1]) {
+          return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+        }
+        
+        // If we can't parse, just return the string itself
+        return replicateOutput;
+      }
+    }
+    
+    // Case 2: If the output is an array (which matches the API docs)
+    if (Array.isArray(replicateOutput) && replicateOutput.length > 0) {
+      const firstElement = replicateOutput[0];
+      
+      // If the first element is a string, try to parse it as JSON
+      if (typeof firstElement === 'string') {
+        try {
+          const parsedObj = JSON.parse(firstElement);
+          if (parsedObj && typeof parsedObj.natural_text === 'string') {
+            return parsedObj.natural_text;
+          }
+        } catch (innerJsonError) {
+          // If parsing fails, use regex to extract natural_text
+          const match = firstElement.match(/natural_text['"]\s*:\s*['"]([^'"]+)['"]/);
+          if (match && match[1]) {
+            return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          }
+          
+          // If we can't parse it, return the string as is
+          return firstElement;
+        }
+      }
+    }
+    
+    // Case 3: If the output has a specific structure we're expecting
+    if (replicateOutput && 
+        typeof replicateOutput === 'object' && 
+        'output' in replicateOutput) {
+      const output = (replicateOutput as any).output;
+      
+      // If output is an array with elements
+      if (Array.isArray(output) && output.length > 0) {
+        const firstElement = output[0];
+        
+        // If the first element is a string, try to parse it as JSON
+        if (typeof firstElement === 'string') {
+          try {
+            const parsedObj = JSON.parse(firstElement);
+            if (parsedObj && typeof parsedObj.natural_text === 'string') {
+              return parsedObj.natural_text;
+            }
+          } catch (innerJsonError) {
+            // Use regex as fallback
+            const match = firstElement.match(/natural_text['"]\s*:\s*['"]([^'"]+)['"]/);
+            if (match && match[1]) {
+              return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            }
+            
+            // Return string directly as last resort
+            return firstElement;
+          }
+        }
+      }
+    }
+    
+    // Last resort: convert to string and try to extract anything useful
+    const stringified = JSON.stringify(replicateOutput);
+    const match = stringified.match(/natural_text['"]\s*:\s*['"]([^'"]+)['"]/);
+    if (match && match[1]) {
+      return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    }
+    
+    // Absolute fallback: return a string representation
+    return typeof replicateOutput === 'string' ? replicateOutput : stringified;
+    
+  } catch (error) {
+    console.error("Text extraction error:", error);
+    return "Error extracting OCR text";
+  }
+}
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
@@ -54,7 +149,8 @@ export const processPdfWithOcr = action({
         const input = {
           pdf: fileData,
           page_number: pageNumber,
-          max_new_tokens: 1024
+          max_new_tokens: 1024,
+          temperature: replicateConfig.temperature || 0.1 // Use temperature from config
         };
         
         let retries = 0;
@@ -94,119 +190,12 @@ export const processPdfWithOcr = action({
           throw new Error(`Failed to process page ${pageNumber} after ${replicateConfig.maxRetries} retries due to rate limits`);
         }
         
-        // Extract text from this page's output
+        // Extract text from this page's output using our new extraction function
         let pageExtractedText = "";
         if (pageOutput) {
-          if (typeof pageOutput === "string") {
-            try {
-              // Try to parse the string as JSON first - Replicate might return a stringified JSON
-              const stringifiedOutput = pageOutput as string;
-              // Check if it looks like a JSON string array
-              if (stringifiedOutput.startsWith('[') && stringifiedOutput.endsWith(']')) {
-                const parsed = JSON.parse(stringifiedOutput);
-                // If it's an array of strings, join them
-                if (Array.isArray(parsed)) {
-                  // Check if any element contains a JSON with natural_text
-                  for (const item of parsed) {
-                    try {
-                      // Try to parse each item as JSON if it's a string
-                      if (typeof item === 'string') {
-                        const parsedItem = JSON.parse(item);
-                        if (parsedItem && parsedItem.natural_text) {
-                          pageExtractedText = parsedItem.natural_text;
-                          break;
-                        }
-                      }
-                    } catch {
-                      // If it's not valid JSON, just use the string itself
-                      continue;
-                    }
-                  }
-                  
-                  // If we didn't find natural_text, just join the array elements
-                  if (!pageExtractedText) {
-                    pageExtractedText = parsed.join("\n");
-                  }
-                }
-              } else {
-                pageExtractedText = stringifiedOutput;
-              }
-            } catch {
-              // If parsing fails, use the string as is
-              pageExtractedText = pageOutput;
-            }
-          } else if (Array.isArray(pageOutput)) {
-            // Handle array output - try to find any item containing natural_text
-            for (const item of pageOutput) {
-              if (typeof item === 'string') {
-                try {
-                  const parsedItem = JSON.parse(item);
-                  if (parsedItem && parsedItem.natural_text) {
-                    pageExtractedText = parsedItem.natural_text;
-                    break;
-                  }
-                } catch {
-                  // Not a valid JSON string, continue to the next item
-                  continue;
-                }
-              }
-            }
-            
-            // If we didn't find natural_text, just join the array elements
-            if (!pageExtractedText) {
-              pageExtractedText = pageOutput.join("\n");
-            }
-          } else if (typeof pageOutput === "object" && pageOutput !== null) {
-            // Direct object output
-            const outputObj = pageOutput as Record<string, unknown>;
-            // First check if the output field exists and contains natural_text
-            if (outputObj.output && typeof outputObj.output === "string") {
-              try {
-                // Try to parse output as JSON string array
-                const outputString = outputObj.output as string;
-                if (outputString.startsWith('[') && outputString.endsWith(']')) {
-                  const parsed = JSON.parse(outputString);
-                  if (Array.isArray(parsed)) {
-                    for (const item of parsed) {
-                      if (typeof item === 'string') {
-                        try {
-                          const parsedItem = JSON.parse(item);
-                          if (parsedItem && parsedItem.natural_text) {
-                            pageExtractedText = parsedItem.natural_text;
-                            break;
-                          }
-                        } catch {
-                          continue;
-                        }
-                      }
-                    }
-                  }
-                }
-              } catch {
-                // If parsing fails, use output as is
-                pageExtractedText = outputObj.output as string;
-              }
-            }
-            // Check if natural_text is directly available
-            else if (outputObj.natural_text && typeof outputObj.natural_text === "string") {
-              pageExtractedText = outputObj.natural_text as string;
-            }
-            // Fall back to text or text_output
-            else if (outputObj.text && typeof outputObj.text === "string") {
-              pageExtractedText = outputObj.text;
-            } else if (outputObj.text_output && typeof outputObj.text_output === "string") {
-              pageExtractedText = outputObj.text_output;
-            } else {
-              console.warn(`Replicate output for PDF ${args.pdfId} page ${pageNumber} has unknown structure`);
-              pageExtractedText = JSON.stringify(pageOutput);
-            }
-          } else {
-            console.warn(`Replicate output for PDF ${args.pdfId} page ${pageNumber} has unexpected type: ${typeof pageOutput}`);
-            pageExtractedText = String(pageOutput);
-          }
+          pageExtractedText = extractOCRText(pageOutput);
+          console.log(`Extracted text from page ${pageNumber}, length: ${pageExtractedText.length}`);
         }
-        
-        console.log(`Completed processing page ${pageNumber} of ${current!.pageCount}. Text length: ${pageExtractedText.length}`);
         
         return {
           pageNumber,

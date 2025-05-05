@@ -1,4 +1,3 @@
-// src/app/pdf/[storageId]/OCRfile.tsx
 import React from 'react'
 
 interface OCRfileProps {
