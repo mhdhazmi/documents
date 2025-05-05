@@ -204,7 +204,6 @@ export default function PdfView() {
           <OCRfile
             textToDisplay={gText}
             closed={true}
-            isProcessing={isLoadingGemini}
             hide={geminiStep !== 'completed'}
           />
         </div>
@@ -218,7 +217,6 @@ export default function PdfView() {
           <OCRfile
             textToDisplay={rText}
             closed={false}
-            isProcessing={isLoadingReplicate}
             hide={replicateStep !== 'completed'}
           />
         </div>

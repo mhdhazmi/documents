@@ -3,14 +3,12 @@ import React from 'react'
 interface OCRfileProps {
   textToDisplay: string;
   closed: boolean;
-  isProcessing?: boolean;
   hide?: boolean;
 }
 
 export default function OCRfile({ 
   textToDisplay, 
   closed, 
-  isProcessing = false,
   hide = false
 }: OCRfileProps) {
   const modelLabel = closed ? 
