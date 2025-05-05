@@ -65,8 +65,8 @@ export default function PdfView() {
       
       // Set initial Gemini state
       if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
-        setG(openaiGeminiResults[0].cleanedText || '');
         setGeminiStep('completed');
+        setG(openaiGeminiResults[0].cleanedText || '');
         console.log("Setting initial Gemini step to completed");
       } else if (job?.[0]?.ocrStatus === 'completed') {
         setGeminiStep('streaming');
