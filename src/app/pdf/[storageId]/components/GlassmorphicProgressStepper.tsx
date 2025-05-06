@@ -6,10 +6,12 @@ export type OcrStep = 'uploaded' | 'processing' | 'streaming' | 'completed';
 
 interface GlassmorphicProgressStepperProps {
   currentStep: OcrStep;
+  modelType: 'gemini' | 'replicate';
 }
 
 export default function GlassmorphicProgressStepper({ 
-  currentStep
+  currentStep,
+  modelType
 }: GlassmorphicProgressStepperProps) {
   // Define the ordered steps for display - first is rightmost in RTL
   const orderedSteps: { key: OcrStep; label: string }[] = [
@@ -48,6 +50,8 @@ export default function GlassmorphicProgressStepper({
 
   return (
     <div className="mb-2 rounded-lg bg-emerald-950/60 backdrop-blur-md border border-emerald-800/30 shadow-lg p-2" dir="rtl">
+      {/* Render modelType label */}
+      <div className="px-2 text-xs font-medium text-white mb-1">{modelType}</div>
       <div className="flex items-center justify-between px-1">
         {processedSteps.map((step, index) => (
           <React.Fragment key={step.key}>
