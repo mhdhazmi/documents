@@ -1,10 +1,11 @@
 // convex/ocr/replicate/actions.ts
-import { action } from "../../_generated/server";
+import { action, internalAction } from "../../_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "../../_generated/api";
 import Replicate from "replicate";
 import { Id } from "../../_generated/dataModel";
 import { replicate as replicateConfig } from "../../config";
+import { runWithRetry } from "../../utils/retry";
 
 // Add this function at the top to extract OCR text from Replicate responses
 // Updated extractOCRText function for ocr/replicate/actions.ts
@@ -262,6 +263,138 @@ export const processPdfWithOcr = action({
         provider: "replicate",
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  },
+});
+
+
+
+
+
+
+
+
+
+// Action to process a single page with Replicate OCR
+export const processPageWithOcr = internalAction({
+  args: {
+    pageId: v.id("pages"),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; pageId: Id<"pages">; provider: string }> => {
+    try {
+      // Get the page details
+      const page = await ctx.runQuery(api.pdf.queries.getPdfPage, { pageId: args.pageId });
+      if (!page) {
+        throw new Error(`Page not found for ID: ${args.pageId}`);
+      }
+
+      // Update the page OCR status to "processing"
+      await ctx.runMutation(internal.ocr.replicate.mutations.updatePageOcrStatus, {
+        pageId: args.pageId,
+        ocrStatus: "processing",
+      });
+      
+      console.log(`Replicate processing started for page: ${args.pageId} (page ${page.pageNumber})`);
+
+      // Fetch the page file content from Convex storage
+      const fileUrl = await ctx.storage.getUrl(page.fileId); 
+
+      
+      if (!fileUrl) {
+        throw new Error(`Page file not found in storage for fileId: ${page.fileId}`);
+      }
+
+      // Configuration for Replicate
+      const REPLICATE_API_KEY = process.env.REPLICATE_API_TOKEN;
+      if (!REPLICATE_API_KEY) {
+        throw new Error("Replicate API key (REPLICATE_API_TOKEN) is not configured in Convex environment variables.");
+      }
+
+      const replicate = new Replicate({ auth: REPLICATE_API_KEY });
+      
+      console.log(`Processing page ${args.pageId} using model ${replicateConfig.model}`);
+      
+      // Create input for Replicate
+      const input = {
+        pdf: fileUrl,
+        page_number: 1,
+        max_ne_tokens: 1024
+      };
+      
+      // Call Replicate API with retry
+      const pageOutput = await runWithRetry({
+        operation: async () => {
+          return await replicate.run(
+            `${replicateConfig.model}:${replicateConfig.modelVersion}` as `${string}/${string}:${string}`, 
+            { input }
+          );
+        },
+        maxRetries: replicateConfig.maxRetries,
+        initialDelayMs: replicateConfig.retryDelayMs,
+        onRetry: (attempt, error, delayMs) => {
+          // Check if it's a rate limit error (429)
+          const isRateLimit = error.message.includes('429') || 
+                             (error.message.includes('rate') && error.message.includes('limit'));
+                             
+          console.log(
+            `Replicate API call ${isRateLimit ? 'rate limited' : 'failed'} when processing page ${page.pageNumber}. ` +
+            `Retrying in ${Math.round(delayMs/1000)}s (attempt ${attempt}/${replicateConfig.maxRetries})`
+          );
+        }
+      });
+      
+      // Extract text from the response
+      let extractedText = "";
+      
+      if (pageOutput) {
+        if (typeof pageOutput === "string") {
+          extractedText = pageOutput;
+        } else if (Array.isArray(pageOutput)) {
+          extractedText = pageOutput.join("\n");
+        } else if (typeof pageOutput === "object" && pageOutput !== null) {
+          // Try to extract text from various possible fields
+          const outputObj = pageOutput as Record<string, unknown>;
+          
+          if (outputObj.natural_text && typeof outputObj.natural_text === "string") {
+            extractedText = outputObj.natural_text;
+          } else if (outputObj.text && typeof outputObj.text === "string") {
+            extractedText = outputObj.text;
+          } else if (outputObj.text_output && typeof outputObj.text_output === "string") {
+            extractedText = outputObj.text_output;
+          } else {
+            extractedText = JSON.stringify(pageOutput);
+          }
+        } else {
+          extractedText = String(pageOutput);
+        }
+      }
+      
+      console.log(`Replicate OCR successful for page ${args.pageId}. Text length: ${extractedText.length}`);
+
+      // Save the extracted text and update page OCR status
+      await ctx.runMutation(internal.ocr.replicate.mutations.updatePageOcrResults, {
+        pageId: args.pageId,
+        extractedText,
+        ocrStatus: "completed",
+      });
+
+      // Later in Sprint 5, we'll immediately trigger OpenAI cleanup here
+      
+      return { 
+        success: true, 
+        pageId: args.pageId,
+        provider: "replicate",
+      };
+    } catch (error) {
+      console.error(`Replicate OCR failed for page ${args.pageId}:`, error);
+
+      // Update status to failed
+      await ctx.runMutation(internal.ocr.replicate.mutations.updatePageOcrStatus, {
+        pageId: args.pageId,
+        ocrStatus: "failed",
+      });
+
+      throw error;
     }
   },
 });

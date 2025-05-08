@@ -14,7 +14,7 @@ export const replicate = {
 
 // Gemini OCR Configuration
 export const gemini = {
-    model: "gemini-2.5-pro-exp-03-25",
+    model: "gemini-2.5-pro-preview-05-06",
     fileProcessingPollingIntervalMs: 1000,
     prompt: `🎯 Objective
 Perform high-accuracy OCR (Optical Character Recognition) on Arabic-language documents. The input may be a scanned document, photographed text, or a PDF containing Arabic script.

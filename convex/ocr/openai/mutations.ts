@@ -87,3 +87,82 @@ export const updateCleanedStatus = internalMutation({
   }); 
 
 
+
+
+
+  // convex/ocr/openai/mutations.ts - Add to existing file
+
+export const updatePageCleaningStatus = internalMutation({
+  args: {
+    pageId: v.id("pages"),
+    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
+    cleanedText: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Check if we already have results for this page
+    const page = await ctx.db.get(args.pageId);
+    if (!page) {
+      throw new Error("Page not found");
+    }
+
+    const existingCleaned = await ctx.db.query("openaiCleanedPage")
+      .withIndex("by_page_id", (q) => q.eq("pageId", args.pageId))
+      .filter((q) => q.eq(q.field("source"), args.source))
+      .first();
+
+    if (existingCleaned) {
+      const update: any = {
+        cleaningStatus: args.cleaningStatus,
+        processedAt: Date.now(),
+      };
+      
+      if (args.cleanedText !== undefined) {
+        update.cleanedText = args.cleanedText;
+      }
+      
+      await ctx.db.patch(existingCleaned._id, update);
+    } else {
+      const insert: any = {
+        pageId: args.pageId,
+        cleaningStatus: args.cleaningStatus,
+        source: args.source,
+        processedAt: Date.now(),
+        cleanedText: args.cleanedText || "",
+      };
+      
+      await ctx.db.insert("openaiCleanedPage", insert);
+    }
+  },
+});
+
+export const savePageCleanedResults = internalMutation({
+  args: {
+    pageId: v.id("pages"),
+    cleanedText: v.string(),
+    cleaningStatus: v.literal("completed"),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
+  },
+  handler: async (ctx, args) => {
+    const existingJob = await ctx.db.query("openaiCleanedPage")
+      .withIndex("by_page_id", (q) => q.eq("pageId", args.pageId))
+      .filter((q) => q.eq(q.field("source"), args.source))
+      .first();
+
+    if (existingJob) {
+      await ctx.db.patch(existingJob._id, {
+        cleanedText: args.cleanedText,
+        cleaningStatus: args.cleaningStatus,
+        processedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("openaiCleanedPage", {
+        pageId: args.pageId,
+        cleanedText: args.cleanedText,
+        cleaningStatus: args.cleaningStatus,
+        processedAt: Date.now(),
+        source: args.source,
+      });
+    }
+  },
+});

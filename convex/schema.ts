@@ -83,4 +83,49 @@ ragSources: defineTable({
 })
 .index("bySessionId", ["sessionId"])
 .index("byPdfId", ["pdfIds"]),
+
+
+
+
+// New page by page schemas
+
+pages: defineTable({
+  pdfId: v.id("pdfs"),
+  pageNumber: v.number(),
+  fileId: v.string(), // Convex storage ID for the page image/PDF
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  createdAt: v.number(),
+})
+.index("byPdfId", ["pdfId"])
+.index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"]),
+
+geminiPageOcr: defineTable({
+  pageId: v.id("pages"),
+  extractedText: v.optional(v.string()),
+  ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
+  processedAt: v.number(),
+})
+.index("by_page_id", ["pageId"]),
+
+replicatePageOcr: defineTable({
+  pageId: v.id("pages"),
+  extractedText: v.optional(v.string()),
+  ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
+  processedAt: v.number(),
+})
+.index("by_page_id", ["pageId"]),
+
+openaiCleanedPage: defineTable({
+  pageId: v.id("pages"),
+  cleanedText: v.string(),
+  processedAt: v.number(),
+  cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
+  source: v.union(v.literal("gemini"), v.literal("replicate")),
+})
+.index("by_page_id", ["pageId"]),
+
+
 });
+
+

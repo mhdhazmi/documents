@@ -202,3 +202,160 @@ export const cleanHandler = httpAction(async (ctx, req) => {
     );
   }
 });
+
+
+
+
+
+
+
+
+
+
+//clean page
+export const cleanPageHandler = httpAction(async (ctx, req) => {
+  // Get CORS headers for this request
+  const corsHeaders = getCorsHeaders(req);
+  
+  // Handle preflight OPTIONS request
+  if (req.method === "OPTIONS") {
+    return new Response(null, { 
+      status: 204, 
+      headers: corsHeaders 
+    });
+  }
+
+  // Handle actual request
+  try {
+    if (req.method !== "POST") {
+      return new Response("Method not allowed", { 
+        status: 405, 
+        headers: corsHeaders 
+      });
+    }
+    
+    // Parse request body
+    const body = await req.json().catch(err => {
+      console.error("Failed to parse request body", err);
+      throw new Error("Invalid JSON in request body");
+    });
+    
+    const { pageId, source } = body as { pageId: Id<"pages">; source: "gemini" | "replicate" };
+    
+    if (!pageId || !source) {
+      return new Response("Missing required fields: pageId and source", {
+        status: 400,
+        headers: corsHeaders
+      });
+    }
+    
+    console.log("Processing request for pageId:", pageId, "source:", source);
+    
+    // Check if page exists
+    const page = await ctx.runQuery(api.pdf.queries.getPdfPage, { pageId });
+    if (!page) {
+      return new Response("Page not found in database", { 
+        status: 404, 
+        headers: corsHeaders 
+      });
+    }
+    
+    // Get OCR status based on source
+    let ocrResults;
+    if (source === "gemini") {
+      ocrResults = await ctx.runQuery(api.ocr.gemini.queries.getPageOcrResults, { pageId });
+    } else if (source === "replicate") {
+      ocrResults = await ctx.runQuery(api.ocr.replicate.queries.getPageOcrResults, { pageId });
+    } else {
+      return new Response(`Invalid source: ${source}`, { 
+        status: 400, 
+        headers: corsHeaders 
+      });
+    }
+    
+    if (!ocrResults?.ocrResults || ocrResults.ocrResults.ocrStatus !== "completed") {
+      return new Response(`${source} OCR not completed for page`, { 
+        status: 400, 
+        headers: corsHeaders 
+      });
+    }
+    
+    const extractedText = ocrResults.ocrResults.extractedText;
+    if (!extractedText || extractedText.trim() === "") {
+      return new Response("No text found to clean", { 
+        status: 400, 
+        headers: corsHeaders 
+      });
+    }
+    
+    // Update status to "started"
+    await ctx.runMutation(internal.ocr.openai.mutations.updatePageCleaningStatus, { 
+      pageId, 
+      source, 
+      cleaningStatus: "started" 
+    });
+    
+    // Set up streaming response
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
+    
+    // Process in background
+    void (async () => {
+      try {
+        let fullText = "";
+        
+        const { textStream } = await streamText({
+          model: openai(openaiConfig.streamingModel),
+          system: openaiConfig.systemPrompt,
+          prompt: extractedText,
+        });
+        
+        for await (const chunk of textStream) {
+          await writer.write(encoder.encode(chunk));
+          fullText += chunk;
+        }
+        
+        // Save completed result
+        await ctx.runMutation(internal.ocr.openai.mutations.savePageCleanedResults, {
+          pageId,
+          source,
+          cleanedText: fullText,
+          cleaningStatus: "completed"
+        });
+        
+        // Send event indicating page is done
+        await writer.write(encoder.encode(JSON.stringify({ pageDone: pageId })));
+      } catch (error) {
+        console.error("Error in streaming process:", error);
+        // Can't update response headers at this point
+      } finally {
+        await writer.close();
+      }
+    })();
+    
+    // Return streaming response with CORS headers
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        ...corsHeaders
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error in clean page handler:", error);
+    return new Response(
+      JSON.stringify({ 
+        error: true, 
+        message: error instanceof Error ? error.message : String(error) 
+      }), 
+      { 
+        status: 500, 
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders
+        } 
+      }
+    );
+  }
+});

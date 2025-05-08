@@ -53,3 +53,43 @@ export const getCleanedId = query({
     .collect();
   },
 }); 
+
+
+
+
+
+
+
+// convex/ocr/openai/queries.ts - Add to existing file
+
+export const getPageCleanedResults = query({
+  args: {
+    pageId: v.id("pages"),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
+  },
+  handler: async (ctx, args) => {
+    // Get the page
+    const page = await ctx.db.get(args.pageId);
+    if (!page) {
+      console.warn(`Page not found in openai/getPageCleanedResults query for ID: ${args.pageId}`);
+      return null;
+    }
+
+    // Query for cleaned results
+    const cleanedResult = await ctx.db
+      .query("openaiCleanedPage")
+      .withIndex("by_page_id", (q) => q.eq("pageId", args.pageId))
+      .filter((q) => q.eq(q.field("source"), args.source))
+      .first();
+
+    if (!cleanedResult) {
+      return { page, cleanedText: null, cleaningStatus: null };
+    }
+
+    return {
+      page,
+      cleanedText: cleanedResult.cleanedText,
+      cleaningStatus: cleanedResult.cleaningStatus,
+    };
+  },
+});
