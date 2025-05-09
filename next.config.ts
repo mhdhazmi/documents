@@ -1,7 +1,8 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    useLightningcss: false,  // ← turn off the Rust-based pipeline
+  },
 };
 
-export default nextConfig;
+module.exports = nextConfig;
