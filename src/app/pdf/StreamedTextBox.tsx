@@ -6,6 +6,8 @@ import { usePageStream, selectChunk } from "@/store/pageStreams";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { motion } from "motion/react";
+import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 interface StreamedTextBoxProps {
   pageId: Id<"pages">;
@@ -33,19 +35,59 @@ export default function StreamedTextBox({ pageId, src }: StreamedTextBoxProps) {
   );
 
   const isCompleted = cleaningResults?.cleaningStatus === "completed";
-  const hasText = chunks.length > 0;
+  const hasText = chunks && chunks.length > 0;
+  const ocrStatus = pageResults?.ocrResults?.ocrStatus;
+
+  // Determine status icon and message
+  let statusIcon;
+  let statusMessage;
+
+  if (isCompleted) {
+    statusIcon = <CheckCircle className="w-4 h-4 text-emerald-400" />;
+    statusMessage = "اكتملت المعالجة";
+  } else if (ocrStatus === "failed") {
+    statusIcon = <AlertCircle className="w-4 h-4 text-red-400" />;
+    statusMessage = "فشلت المعالجة";
+  } else if (ocrStatus === "completed" && !hasText) {
+    statusIcon = <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+    statusMessage = "جاري تنقيح النص...";
+  } else if (ocrStatus === "processing") {
+    statusIcon = <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />;
+    statusMessage = "جاري معالجة النص...";
+  } else {
+    statusIcon = <div className="w-4 h-4 rounded-full bg-gray-400/30" />;
+    statusMessage = "في انتظار المعالجة...";
+  }
 
   return (
-    <div className="relative">
+    <motion.div
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="relative space-y-2"
+    >
+      {/* Status Header */}
+      <div className="flex items-center gap-2 text-xs text-white/70">
+        {statusIcon}
+        <span>{statusMessage}</span>
+      </div>
+
+      {/* Text Content */}
       {!hasText && !isCompleted ? (
-        <div className="min-h-[80px] flex items-center justify-center bg-emerald-950/10 backdrop-blur-md rounded-lg border border-emerald-800/20 p-4">
+        <div className="min-h-[100px] flex items-center justify-center bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4">
           <TypingIndicator />
         </div>
       ) : (
-        <pre className="min-h-[80px] max-h-[200px] overflow-y-auto text-white/90 bg-emerald-950/10 backdrop-blur-md rounded-lg border border-emerald-800/20 p-4 text-right font-sans text-sm whitespace-pre-wrap">
-          {chunks || "يتم الآن معالجة النصوص..."}
-        </pre>
+        <motion.div
+          initial={{ height: 0 }}
+          animate={{ height: "auto" }}
+          transition={{ duration: 0.3 }}
+          className="overflow-hidden"
+        >
+          <pre className="min-h-[100px] max-h-[250px] overflow-y-auto text-white/90 bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4 text-right font-sans text-xl whitespace-pre-wrap leading-relaxed">
+            {chunks || "في انتظار المعالجة..."}
+          </pre>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }

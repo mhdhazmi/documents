@@ -9,13 +9,17 @@ import PDFViewer, { PDFViewerHandle } from "@/app/components/PDFViewer";
 import { PageAccordion } from "@/components/pageAccordion";
 import ProgressBarOverall from "@/components/ProgressBarOverall";
 import { usePdfPage } from "@/app/pdf/pages/context";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
+import { motion } from "motion/react";
+import { ChevronLeft, ChevronRight, ZoomIn, Maximize2 } from "lucide-react";
 
 export default function PagesView() {
   const params = useParams();
   const storageId = params.storageId as Id<"pdfs">;
   const { page, setPage } = usePdfPage();
   const viewerRef = useRef<PDFViewerHandle>(null);
+  const [isAccordionCollapsed, setIsAccordionCollapsed] = useState(false);
+  const [pdfFitMode, setPdfFitMode] = useState<"fit" | "zoom">("fit");
 
   // Get PDF data
   const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
@@ -39,17 +43,26 @@ export default function PagesView() {
     }
   }, [page]);
 
+  // Calculate proportions
+  const accordionWidth = isAccordionCollapsed
+    ? "w-16"
+    : "w-full md:w-[65%] lg:w-[70%]";
+  const pdfWidth = isAccordionCollapsed
+    ? "w-full"
+    : "w-full md:w-[35%] lg:w-[30%]";
+
   if (!pdf || !pages) {
     return (
-      <div className="flex items-center justify-center h-full text-white">
-        Loading...
+      <div className="flex h-screen items-center justify-center text-white">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+        <span className="ml-3">جاري التحميل...</span>
       </div>
     );
   }
 
   return (
     <div
-      className="h-screen flex gap-2 p-4"
+      className="h-screen flex flex-col relative overflow-hidden"
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",
@@ -57,25 +70,100 @@ export default function PagesView() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Progress Bar */}
-      <ProgressBarOverall pdfId={storageId} />
-
-      {/* RTL Layout: Accordion on right, Viewer on left */}
-      <div className="flex w-full gap-2" dir="rtl">
-        {/* PageAccordion */}
-        <div className="w-[40%] overflow-y-auto">
-          <PageAccordion pages={pages} />
+      {/* Enhanced Progress Bar */}
+      <motion.div
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        className="sticky top-0 z-50 bg-emerald-950/80 backdrop-blur-md border-b border-emerald-800/30"
+      >
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-lg font-semibold text-white">{pdf.filename}</h1>
+            <span className="text-sm text-emerald-300">
+              صفحة {page} من {pdf.pageCount}
+            </span>
+          </div>
+          <ProgressBarOverall pdfId={storageId} />
         </div>
+      </motion.div>
 
-        {/* PDFViewer */}
-        <div className="flex-1">
-          <PDFViewer
-            ref={viewerRef}
-            pdfUrl={fileUrl || null}
-            initialPage={1}
-            onPageChange={handlePageChange}
-          />
-        </div>
+      {/* Main Content Area */}
+      <div className="flex-1 flex gap-1 md:gap-2 p-2 md:p-4 overflow-hidden">
+        {/* Accordion Section */}
+        <motion.div
+          initial={{ x: -100, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className={`transition-all duration-300 ${accordionWidth} relative`}
+        >
+          <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden">
+            {!isAccordionCollapsed && (
+              <div className="h-full overflow-y-auto p-2 md:p-4">
+                <PageAccordion pages={pages} />
+              </div>
+            )}
+            {/* Collapse/Expand Button */}
+            <button
+              onClick={() => setIsAccordionCollapsed(!isAccordionCollapsed)}
+              className="absolute -right-3 top-1/2 -translate-y-1/2 bg-emerald-600/90 hover:bg-emerald-600 text-white p-2 rounded-full backdrop-blur-sm transition-colors z-10 shadow-lg"
+            >
+              {isAccordionCollapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Divider with gradient */}
+        <div className="hidden md:block w-px bg-gradient-to-t from-transparent via-emerald-500/50 to-transparent" />
+
+        {/* PDF Viewer Section */}
+        <motion.div
+          initial={{ x: 100, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className={`transition-all duration-300 ${pdfWidth} relative`}
+        >
+          <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden relative">
+            {/* PDF Controls */}
+            <div className="absolute top-4 right-4 z-10 flex gap-2">
+              <button
+                onClick={() => setPdfFitMode("fit")}
+                className={`p-2 rounded-lg transition-colors ${
+                  pdfFitMode === "fit"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-black/30 text-white/70 hover:text-white"
+                }`}
+                title="احتواء الصفحة"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setPdfFitMode("zoom")}
+                className={`p-2 rounded-lg transition-colors ${
+                  pdfFitMode === "zoom"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-black/30 text-white/70 hover:text-white"
+                }`}
+                title="عرض أصلي"
+              >
+                <ZoomIn className="h-4 w-4" />
+              </button>
+            </div>
+
+            <PDFViewer
+              ref={viewerRef}
+              pdfUrl={fileUrl || null}
+              initialPage={1}
+              onPageChange={handlePageChange}
+              fitToWidth={pdfFitMode === "fit"}
+              maxScale={2.5}
+            />
+          </div>
+        </motion.div>
       </div>
     </div>
   );
