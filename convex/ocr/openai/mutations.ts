@@ -166,3 +166,37 @@ export const savePageCleanedResults = internalMutation({
     }
   },
 });
+
+// convex/ocr/openai/mutations.ts (update the startPageCleaning function)
+export const startPageCleaning = internalMutation({
+  args: { 
+    pageId: v.id("pages"), 
+    source: v.union(v.literal("gemini"), v.literal("replicate"))
+  },
+  handler: async (ctx, { pageId, source }) => {
+    const existing = await ctx.db
+      .query("openaiCleanedPage")
+      .withIndex("by_page_source", q => 
+        q.eq("pageId", pageId).eq("source", source))
+      .unique();
+    
+    // Change this condition to handle the schema type
+    if (existing && existing.cleaningStatus === "completed") {
+      return "already-running";
+    }
+    
+    if (existing) {
+      await ctx.db.patch(existing._id, { cleaningStatus: "started" }); // Use "started" instead of "processing"
+    } else {
+      await ctx.db.insert("openaiCleanedPage", {
+        pageId,
+        source,
+        cleaningStatus: "started", // Use "started" instead of "processing"
+        cleanedText: "",
+        processedAt: Date.now(),
+      });
+    }
+    
+    return "started";
+  },
+});

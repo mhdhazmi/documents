@@ -204,6 +204,7 @@ export const cleanHandler = httpAction(async (ctx, req) => {
   }
 });
 
+// convex/http.ts (update the cleanPageHandler)
 export const cleanPageHandler = httpAction(async (ctx, req) => {
   // Get CORS headers for this request
   const corsHeaders = getCorsHeaders(req);
@@ -237,6 +238,22 @@ export const cleanPageHandler = httpAction(async (ctx, req) => {
       return new Response("Missing required fields: pageId and source", {
         status: 400,
         headers: corsHeaders
+      });
+    }
+    
+    // Check idempotency first
+    const status = await ctx.runMutation(internal.ocr.openai.mutations.startPageCleaning, { 
+      pageId, 
+      source 
+    });
+    
+    if (status === "already-running") {
+      return new Response(JSON.stringify({ running: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders
+        }
       });
     }
     
@@ -278,14 +295,6 @@ export const cleanPageHandler = httpAction(async (ctx, req) => {
         headers: corsHeaders 
       });
     }
-    
-    // Update status to "started" (using upsert behavior)
-    await ctx.runMutation(internal.ocr.openai.mutations.updatePageCleaningStatus, { 
-      pageId, 
-      source, 
-      cleaningStatus: "started",
-      cleanedText: ""
-    });
     
     // Set up streaming response
     const { readable, writable } = new TransformStream();

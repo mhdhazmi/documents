@@ -1,5 +1,6 @@
-// src/app/pdf/pages/streamCleanPage.ts
+// src/app/pdf/pages/streamCleanPage.ts (update with debounce)
 import { Id } from "../../../../convex/_generated/dataModel";
+import debounce from 'lodash.debounce';
 
 export async function streamCleanPage(
   pageId: Id<"pages">, 
@@ -32,7 +33,9 @@ export async function streamCleanPage(
     const reader = resp.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let fullText = "";
-    let lastUpdateTime = 0;
+    
+    // Create debounced update function
+    const debouncedUpdate = debounce(onChunk, 300);
     
     // Start with an empty update to indicate streaming has begun
     onChunk("");
@@ -44,12 +47,8 @@ export async function streamCleanPage(
       const newChunk = decoder.decode(value, { stream: true });
       fullText += newChunk;
       
-      // Throttle updates to reduce UI jitter (every 100ms)
-      const now = Date.now();
-      if (now - lastUpdateTime > 100) {
-        onChunk(fullText);
-        lastUpdateTime = now;
-      }
+      // Use debounced update for smoother UI
+      debouncedUpdate(fullText);
     }
     
     // Ensure final text is processed with any remaining decoder content
@@ -58,8 +57,10 @@ export async function streamCleanPage(
       fullText += finalChunk;
     }
     
-    // Final update
+    // Flush pending debounced calls and do final update
+    debouncedUpdate.flush();
     onChunk(fullText);
+    
     console.log(`Completed stream cleaning for ${src} OCR of page ${pageId}`);
   } catch (error) {
     console.error(`Stream clean error for ${src} OCR of page ${pageId}:`, error);

@@ -123,8 +123,8 @@ openaiCleanedPage: defineTable({
   cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
   source: v.union(v.literal("gemini"), v.literal("replicate")),
 })
-.index("by_page_id", ["pageId"]),
-
+.index("by_page_id", ["pageId"])
+.index("by_page_source", ["pageId", "source"]), // Add this index
 
 });
 
