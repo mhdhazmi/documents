@@ -2,7 +2,7 @@
 import { workflow } from "./index";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalMutation, mutation } from "../_generated/server";
+import { internalMutation } from "../_generated/server";
 
 export const providerWorkflow = workflow.define({
   args: {
@@ -32,17 +32,17 @@ export const providerWorkflow = workflow.define({
       );
     }
 
+    // 2. Clean the OCR results using the HTTP endpoint
     await step.runAction(
         internal.ocr.openai.actions.cleanPage,
         { pageId, source: provider },
         {
-          retry: { maxAttempts: 2, initialBackoffMs: 1000, base: 2 },
-          name: `CleanPage-${provider}-${pageId}`
+          retry: { maxAttempts: 3, initialBackoffMs: 2000, base: 2 },
+          name: `CleanPageHTTP-${provider}-${pageId}`
         }
       );
     },
   });
-
 
 
 

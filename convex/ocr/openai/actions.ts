@@ -2,7 +2,7 @@
 
 import { internalAction } from "../../_generated/server";
 import { v } from "convex/values";
-import { api, internal } from "../../_generated/api";
+import { internal } from "../../_generated/api";
 
 export const cleanPage = internalAction({
   args: {
@@ -20,28 +20,30 @@ export const cleanPage = internalAction({
         cleaningStatus: "started" 
       });
       
-      // Get the OCR results based on the source
-      let ocrResults;
-      if (source === "gemini") {
-        ocrResults = await ctx.runQuery(api.ocr.gemini.queries.getPageOcrResults, { pageId });
-      } else {
-        ocrResults = await ctx.runQuery(api.ocr.replicate.queries.getPageOcrResults, { pageId });
+      // Get the base URL for our HTTP endpoint
+      const HTTP_BASE = process.env.CONVEX_SITE_URL;
+      if (!HTTP_BASE) {
+        throw new Error("Missing CONVEX_SITE_URL environment variable");
       }
       
-      if (!ocrResults?.ocrResults || ocrResults.ocrResults.ocrStatus !== "completed") {
-        throw new Error(`${source} OCR not completed for page ${pageId}`);
+      // Call the /cleanPage HTTP endpoint
+      const res = await fetch(`${HTTP_BASE}/cleanPage`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pageId, source }),
+      });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`cleanPage HTTP failed: ${res.status} - ${errorText}`);
       }
       
-      const extractedText = ocrResults.ocrResults.extractedText;
-      if (!extractedText || extractedText.trim() === "") {
-        throw new Error(`No text found to clean for page ${pageId}`);
-      }
+      // Drain the stream to ensure completion
+      await res.text();
       
-      // Rather than implementing the cleaning here, we'll let the HTTP handler
-      // handle it since we want to stream the results. This action just ensures
-      // the cleaning is properly initiated in the workflow.
-      
-      console.log(`Initiated cleaning for page ${pageId} with ${source} OCR`);
+      console.log(`Successfully cleaned page ${pageId} with ${source} OCR via HTTP`);
       
       return {
         success: true,

@@ -31,6 +31,7 @@ import type * as pdf_mutations from "../pdf/mutations.js";
 import type * as pdf_queries from "../pdf/queries.js";
 import type * as performOCR from "../performOCR.js";
 import type * as serve_serve from "../serve/serve.js";
+import type * as utils_cleaner from "../utils/cleaner.js";
 import type * as utils_geminiOcr from "../utils/geminiOcr.js";
 import type * as utils_pdfSplitter from "../utils/pdfSplitter.js";
 import type * as utils_retry from "../utils/retry.js";
@@ -79,6 +80,7 @@ declare const fullApi: ApiFromModules<{
   "pdf/queries": typeof pdf_queries;
   performOCR: typeof performOCR;
   "serve/serve": typeof serve_serve;
+  "utils/cleaner": typeof utils_cleaner;
   "utils/geminiOcr": typeof utils_geminiOcr;
   "utils/pdfSplitter": typeof utils_pdfSplitter;
   "utils/retry": typeof utils_retry;

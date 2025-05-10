@@ -2,6 +2,8 @@
 import { Doc } from "../_generated/dataModel";
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+import { ConvexError } from "convex/values";
+import type { PdfPageInfo, OcrStatus } from "../../src/app/pdf/types";
 
 // Get a list of all uploaded PDFs, potentially filtered and ordered.
 export const getPdfList = query({
@@ -98,5 +100,82 @@ export const getPageWithOcrResults = query({
       replicateOcr,
       openaiCleaned,
     };
+  },
+});
+
+// NEW: Get all pages for a PDF with status and snippet information
+export const getPagesByPdf = query({
+  args: {
+    pdfId: v.id("pdfs"),
+  },
+  handler: async (ctx, args): Promise<PdfPageInfo[]> => {
+    // Check if PDF exists
+    const pdf = await ctx.db.get(args.pdfId);
+    if (!pdf) {
+      throw new ConvexError("PDF not found");
+    }
+
+    // Get all pages for this PDF, sorted by page number
+    const pages = await ctx.db
+      .query("pages")
+      .withIndex("byPdfIdAndPageNumber", (q) => q.eq("pdfId", args.pdfId))
+      .collect();
+
+    // Map each page to PdfPageInfo
+    const pageInfos: PdfPageInfo[] = await Promise.all(
+      pages.map(async (page): Promise<PdfPageInfo> => {
+        // Get Gemini OCR status
+        const geminiOcr = await ctx.db
+          .query("geminiPageOcr")
+          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+          .first();
+        
+        // Get Replicate OCR status
+        const replicateOcr = await ctx.db
+          .query("replicatePageOcr")
+          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+          .first();
+
+        // Get cleaned text (prioritize OpenAI cleaned, fallback to raw OCR)
+        let cleanedText: string | null = null;
+        
+        // First try OpenAI cleaned text
+        const openaiCleaned = await ctx.db
+          .query("openaiCleanedPage")
+          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+          .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+          .first();
+        
+        if (openaiCleaned?.cleanedText) {
+          cleanedText = openaiCleaned.cleanedText;
+        } else {
+          // Fallback to raw OCR text from either source
+          if (geminiOcr?.extractedText) {
+            cleanedText = geminiOcr.extractedText;
+          } else if (replicateOcr?.extractedText) {
+            cleanedText = replicateOcr.extractedText;
+          }
+        }
+
+        // Create snippet (first 160 characters)
+        let cleanedSnippet: string | null = null;
+        if (cleanedText && cleanedText.length > 0) {
+          cleanedSnippet = cleanedText.length > 160 
+            ? `${cleanedText.slice(0, 160)}…` 
+            : cleanedText;
+        }
+
+        return {
+          pageId: page._id,
+          pageNumber: page.pageNumber,
+          geminiStatus: (geminiOcr?.ocrStatus as OcrStatus) || "pending",
+          replicateStatus: (replicateOcr?.ocrStatus as OcrStatus) || "pending",
+          cleanedSnippet,
+        };
+      })
+    );
+
+    // Return pages sorted by page number
+    return pageInfos.sort((a, b) => a.pageNumber - b.pageNumber);
   },
 });

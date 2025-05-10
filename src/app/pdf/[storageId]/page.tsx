@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { redirect, useParams } from 'next/navigation'
 import { useQuery } from 'convex/react'
 import { Id } from '../../../../convex/_generated/dataModel'
 import { api } from '../../../../convex/_generated/api'
@@ -10,10 +10,16 @@ import OCRfile from './OCRfile'
 import PdfPreviewSection from './components/pdfPreviewSection'
 import GlassmorphicProgressStepper, { OcrStep } from './components/GlassmorphicProgressStepper'
 
+// Import navigation components for FE-02
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+
 export default function PdfView() {
   // Extract the dynamic segment directly
   const params = useParams()
   const jobId = params.storageId as Id<'pdfs'>
+
+  redirect(`/pdf/${jobId}/pages`);  
 
   // Data-loading hooks
   const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId })
