@@ -124,7 +124,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
     }, []);
 
     return (
-      <div className="w-full h-full overflow-auto bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-2">
+      <div className="col-start-1 row-start-1 h-full w-full overflow-auto rounded-2xl border border-white/20 bg-white/10 p-2 backdrop-blur-md">
         {pdfUrl ? (
           <div
             ref={containerRef}

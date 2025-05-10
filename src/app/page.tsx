@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { useRouter } from 'next/navigation';
+import { useRouter } from "next/navigation";
 import PDFDropzone from "@/components/PDFDropzone";
 import UploadButton from "@/components/UploadButton";
 import { MessageCircleMore } from "lucide-react";
@@ -12,10 +12,15 @@ import QRCodePopup from "@/components/QRCodePopup";
 
 // Define types for our mutation functions to avoid 'any'
 type GenerateUploadUrlFn = () => Promise<string>;
-type SendPDFFn = (args: { fileId: string, filename: string, fileSize: number, pageCount: number }) => Promise<string>;
+type SendPDFFn = (args: {
+  fileId: string;
+  filename: string;
+  fileSize: number;
+  pageCount: number;
+}) => Promise<string>;
 type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
 
-const words = 'الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال';
+const words = "الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال";
 function TextGenerateEffectDemo() {
   return <TextGenerateEffect words={words} />;
 }
@@ -25,7 +30,9 @@ export default function App() {
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const sendPDF = useMutation(api.pdf.mutations.savePdfMetadata);
   // const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
-  const workflowOrchMutation = useMutation(api.workflowOrch.workflowOrchMutation);
+  const workflowOrchMutation = useMutation(
+    api.workflowOrch.workflowOrchMutation
+  );
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -41,12 +48,14 @@ export default function App() {
 
   async function handleFormSubmit() {
     if (!selectedPDF) return;
-    
+
     setIsLoading(true);
     try {
       // Generate upload URL and upload the PDF
-      const postUrl = await (generateUploadUrl as unknown as GenerateUploadUrlFn)();
-      
+      const postUrl = await (
+        generateUploadUrl as unknown as GenerateUploadUrlFn
+      )();
+
       // Upload the file to storage
       const result = await fetch(postUrl, {
         method: "POST",
@@ -54,25 +63,26 @@ export default function App() {
         body: selectedPDF,
       });
       const { storageId } = await result.json();
-      
+
       // Save PDF metadata
       const pdfId = await (sendPDF as unknown as SendPDFFn)({
         fileId: storageId,
         filename: selectedPDF.name,
         fileSize: selectedPDF.size,
-        pageCount: pageCount || 0
+        pageCount: pageCount || 0,
       });
-      
+
       // Reset form state
       setSelectedPDF(null);
       setPageCount(null);
-      
+
       // Start OCR processing in the background
-      await (workflowOrchMutation as unknown as ProcessPDFFn)({ pdfId })
-        .catch(error => console.error("Error processing OCR:", error));
-      
+      // await (workflowOrchMutation as unknown as ProcessPDFFn)({ pdfId }).catch(
+      //   (error) => console.error("Error processing OCR:", error)
+      // );
+
       // Set redirection URL to trigger navigation
-      setRedirectUrl(`/pdf/${pdfId}`);
+      setRedirectUrl(`/pdf/${pdfId}/pages`);
       setIsLoading(false);
     } catch (error) {
       console.error("Error uploading PDF:", error);
@@ -83,21 +93,23 @@ export default function App() {
   // Handle chat card click to navigate to chat page
   const handleChatCardClick = async () => {
     // If there's a selected PDF, upload it first and then navigate to chat
-    router.push('/chat');
+    router.push("/chat");
   };
 
   return (
-    <div 
-      className="flex flex-col md:flex-row justify-center items-center gap-6 min-h-screen md:h-full overflow-auto md:overflow-hidden py-20 md:py-0 relative"
+    <div
+      className="flex flex-col md:flex-row justify-center items-center gap-6 min-h-screen md:h-full overflow-auto py-20 md:py-0 relative"
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
       }}
     >
       <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer">
-        <h2 className="text-3xl font-semibold mb-4 text-right">ارفع مستنداتك</h2>
+        <h2 className="text-3xl font-semibold mb-4 text-right">
+          ارفع مستنداتك
+        </h2>
         <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
           <PDFDropzone
             selectedPDF={selectedPDF}
@@ -107,7 +119,7 @@ export default function App() {
             isLoading={isLoading}
             setIsLoading={setIsLoading}
           />
-          
+
           <UploadButton
             selectedPDF={selectedPDF}
             isLoading={isLoading}
@@ -117,30 +129,30 @@ export default function App() {
       </section>
 
       {/* Gold AI card */}
-      <section 
+      <section
         className="w-[300px] shadow-lg rounded-2xl p-6 border border-amber-400 h-100 flex flex-col items-center justify-center"
-        style={{ 
-          background: 'linear-gradient(145deg, #d4af37 10%, #b8860b 40%)',
-          boxShadow: '0 10px 25px -5px rgba(180, 130, 20, 0.5)'
+        style={{
+          background: "linear-gradient(145deg, #d4af37 10%, #b8860b 40%)",
+          boxShadow: "0 10px 25px -5px rgba(180, 130, 20, 0.5)",
         }}
       >
         <TextGenerateEffectDemo />
-        
+
         <p className="text-white font-medium text-center">
-         تحويل المستندات إلى نصوص عن طريق الذكاء الإصطناعي
+          تحويل المستندات إلى نصوص عن طريق الذكاء الإصطناعي
         </p>
       </section>
 
       {/* Chat card with onClick handler */}
-      <section 
+      <section
         className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer"
         onClick={handleChatCardClick}
       >
-        <h2 className="text-3xl font-semibold mb-4 text-right">تحدث مع مستنداتك</h2>
-        <p className="text-white/80 text-right">
-          تحدث مع مستنداتك بأسهل طريقة
-        </p>
-        
+        <h2 className="text-3xl font-semibold mb-4 text-right">
+          تحدث مع مستنداتك
+        </h2>
+        <p className="text-white/80 text-right">تحدث مع مستنداتك بأسهل طريقة</p>
+
         {/* Chat icon from Lucide */}
         <div className="flex justify-center my-15">
           <MessageCircleMore className="w-20 h-20 text-white/80" />

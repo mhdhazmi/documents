@@ -2,6 +2,7 @@ import { httpAction } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 import { cleanTextWithOpenAI } from "./utils/cleaner";
+import { readableStreamFromIterable } from "./utils/stream";
 
 // Centralized CORS headers function to ensure consistency
 const getCorsHeaders = (request: Request): Record<string, string> => {
@@ -247,13 +248,25 @@ export const cleanPageHandler = httpAction(async (ctx, req) => {
       source 
     });
     
-    if (status === "already-running") {
-      return new Response(JSON.stringify({ running: true }), {
+    if (status === "completed") {
+      const cleaned = await ctx.runQuery(
+        api.ocr.openai.queries.getPageCleanedResults,
+        { pageId, source }
+      );
+
+      const text = cleaned?.cleanedText ?? "";
+
+      if (text.trim() === "") {
+        // Nothing to stream – tell the client gracefully.
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
+      return new Response(text, {
         status: 200,
         headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders
-        }
+          "Content-Type": "text/plain; charset=utf-8",
+          ...corsHeaders,
+        },
       });
     }
     

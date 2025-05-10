@@ -182,7 +182,7 @@ export const startPageCleaning = internalMutation({
     
     // Change this condition to handle the schema type
     if (existing && existing.cleaningStatus === "completed") {
-      return "already-running";
+      return "completed";
     }
     
     if (existing) {

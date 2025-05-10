@@ -49,7 +49,7 @@ export default function PagesView() {
 
   return (
     <div
-      className="h-screen flex gap-2 p-4 overflow-hidden"
+      className="h-screen flex gap-2 p-4"
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",

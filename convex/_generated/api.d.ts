@@ -35,6 +35,7 @@ import type * as utils_cleaner from "../utils/cleaner.js";
 import type * as utils_geminiOcr from "../utils/geminiOcr.js";
 import type * as utils_pdfSplitter from "../utils/pdfSplitter.js";
 import type * as utils_retry from "../utils/retry.js";
+import type * as utils_stream from "../utils/stream.js";
 import type * as workflow_concatenateWorkflow from "../workflow/concatenateWorkflow.js";
 import type * as workflow_index from "../workflow/index.js";
 import type * as workflow_ocrWorkflow from "../workflow/ocrWorkflow.js";
@@ -84,6 +85,7 @@ declare const fullApi: ApiFromModules<{
   "utils/geminiOcr": typeof utils_geminiOcr;
   "utils/pdfSplitter": typeof utils_pdfSplitter;
   "utils/retry": typeof utils_retry;
+  "utils/stream": typeof utils_stream;
   "workflow/concatenateWorkflow": typeof workflow_concatenateWorkflow;
   "workflow/index": typeof workflow_index;
   "workflow/ocrWorkflow": typeof workflow_ocrWorkflow;

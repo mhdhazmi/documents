@@ -17,15 +17,14 @@ import { usePdfPage } from "@/app/pdf/pages/context";
 import { useKickClean } from "@/app/pdf/[storageId]/hooks/useKickClean";
 
 interface PageAccordionProps {
-  /** Array produced by usePagesQuery(pdfId) */
   pages: PdfPageInfo[];
-  /** Which pageNumber should start open (optional) */
   defaultOpen?: number | null;
-  /** Allow parent to pass extra classes if it owns the layout */
   className?: string;
 }
 
-// Using shadcn/ui Skeleton component for loading state
+// ────────────────────────────────────────────────────────────
+//  Skeleton + Empty-state helpers
+// ────────────────────────────────────────────────────────────
 const AccordionSkeleton = ({ count = 4 }: { count?: number }) => (
   <div className="space-y-2">
     {Array.from({ length: count }).map((_, i) => (
@@ -34,42 +33,40 @@ const AccordionSkeleton = ({ count = 4 }: { count?: number }) => (
   </div>
 );
 
-// Empty state component
 const EmptyState = ({ title }: { title: string }) => (
-  <div className="text-center py-8 text-muted-foreground">
+  <div className="py-8 text-center text-muted-foreground">
     <p>{title}</p>
   </div>
 );
 
-// Helper function to convert our OcrStatus to the type expected by OcrStepperMini
+// ────────────────────────────────────────────────────────────
+//  Utils
+// ────────────────────────────────────────────────────────────
 const convertToOcrStatus = (
   status: string
-): "pending" | "processing" | "completed" | "failed" => {
-  if (["pending", "processing", "completed", "failed"].includes(status)) {
-    return status as "pending" | "processing" | "completed" | "failed";
-  }
-  return "pending"; // fallback
-};
+): "pending" | "processing" | "completed" | "failed" =>
+  ["pending", "processing", "completed", "failed"].includes(status)
+    ? (status as any)
+    : "pending";
 
-// Component to handle hooks for each page
+// Component that kicks the OpenAI clean-stream on mount
 function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
-  // Call useKickClean for both sources
   useKickClean({ pageId: page.pageId, src: "gemini" });
   useKickClean({ pageId: page.pageId, src: "replicate" });
 
   return (
     <>
-      {/* Gemini OCR Section */}
+      {/* Gemini OCR */}
       <div>
-        <h4 className="text-sm font-medium text-blue-600 mb-2 text-right">
+        <h4 className="mb-2 text-right text-sm font-medium text-blue-600">
           نموذج جيميني
         </h4>
         <StreamedTextBox pageId={page.pageId} src="gemini" />
       </div>
 
-      {/* Replicate OCR Section */}
+      {/* Replicate OCR */}
       <div>
-        <h4 className="text-sm font-medium text-purple-600 mb-2 text-right">
+        <h4 className="mb-2 text-right text-sm font-medium text-purple-600">
           نموذج ريبليكيت
         </h4>
         <StreamedTextBox pageId={page.pageId} src="replicate" />
@@ -78,60 +75,82 @@ function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
   );
 }
 
+// ────────────────────────────────────────────────────────────
+//  MAIN COMPONENT
+// ────────────────────────────────────────────────────────────
 export function PageAccordion({
   pages,
   defaultOpen = null,
   className,
 }: PageAccordionProps) {
-  const [value, setValue] = useState(defaultOpen ? defaultOpen.toString() : "");
-  const { page: currentPage, setPage } = usePdfPage(); // Get context
+  const { page: currentPage, setPage } = usePdfPage();
 
-  // FE-15: Auto-expand accordion when page changes from PDFViewer
+  // Keep track of which accordion rows are open
+  const [openItems, setOpenItems] = useState<string[]>(() => {
+    if (defaultOpen) return [defaultOpen.toString()];
+    return pages?.map((p) => p.pageNumber.toString()) ?? [];
+  });
+
+  // Once `pages` arrive, open everything (only once)
   useEffect(() => {
-    if (currentPage && currentPage.toString() !== value) {
-      setValue(currentPage.toString());
-
-      // Scroll to the active row with delay to ensure DOM is updated
-      setTimeout(() => {
-        const element = document.querySelector(`[data-page="${currentPage}"]`);
-        element?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 100);
+    if (!defaultOpen && pages?.length && openItems.length === 0) {
+      setOpenItems(pages.map((p) => p.pageNumber.toString()));
     }
-  }, [currentPage, value]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages]);
 
-  // Loading state
-  if (!pages) {
-    return <AccordionSkeleton count={4} />;
-  }
+  // Auto-expand the row that matches the PDF-viewer page
+  useEffect(() => {
+    if (!currentPage) return;
+    const id = currentPage.toString();
 
-  // Empty state
-  if (!pages.length) {
-    return <EmptyState title="لا توجد صفحات" />;
-  }
+    if (!openItems.includes(id)) {
+      setOpenItems((prev) => [...prev, id]);
+    }
 
+    // Smooth-scroll to the row
+    setTimeout(() => {
+      document
+        .querySelector(`[data-page="${currentPage}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  }, [currentPage, openItems]);
+
+  // ─── Loading & Empty states ───────────────────────────────
+  if (!pages) return <AccordionSkeleton count={4} />;
+  if (pages.length === 0) return <EmptyState title="لا توجد صفحات" />;
+
+  // ─── UI ───────────────────────────────────────────────────
   return (
-    <div dir="rtl" className={cn("w-full max-w-3xl mx-auto p-4", className)}>
+    <div
+      dir="rtl"
+      className={cn(
+        "col-start-2 row-start-1 h-full overflow-y-auto p-4",
+        "prose max-w-none text-xl leading-8", // large, readable text
+        className
+      )}
+    >
       <Accordion
-        type="single"
+        type="multiple"
         collapsible
-        value={value}
-        onValueChange={setValue}
+        value={openItems}
+        onValueChange={(v) => setOpenItems(Array.isArray(v) ? v : v ? [v] : [])}
       >
         {pages.map((page) => (
           <AccordionItem
             key={page.pageId}
             value={page.pageNumber.toString()}
-            data-page={page.pageNumber} // For scrolling reference
+            data-page={page.pageNumber}
           >
             <AccordionTrigger
               className="flex items-center justify-between gap-2"
-              onClick={() => setPage(page.pageNumber)} // FE-14: Jump to page when clicked
+              onClick={() => setPage(page.pageNumber)}
             >
               <span className="font-medium text-right">
                 صفحة {page.pageNumber}
               </span>
+
               <div className="flex flex-col gap-1">
-                {/* Gemini provider + status pill */}
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-blue-600">Gemini</span>
                   <OcrStepperMini
@@ -139,7 +158,6 @@ export function PageAccordion({
                     status={convertToOcrStatus(page.geminiStatus)}
                   />
                 </div>
-                {/* Replicate provider + status pill */}
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-purple-600">Replicate</span>
                   <OcrStepperMini
@@ -149,6 +167,7 @@ export function PageAccordion({
                 </div>
               </div>
             </AccordionTrigger>
+
             <AccordionContent className="space-y-6">
               <PageContentWithKicks page={page} />
             </AccordionContent>
