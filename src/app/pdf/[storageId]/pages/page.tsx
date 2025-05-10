@@ -1,36 +1,82 @@
-// /app/pdf/[pdfId]/pages/page.tsx
-// Note: pdfId is actually the storageId, keeping the same convention as /app/pdf/[storageId]
+// src/app/pdf/[storageId]/pages/page.tsx
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
+import { useParams } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "../../../../../convex/_generated/api";
+import { Id } from "../../../../../convex/_generated/dataModel";
+import PDFViewer, { PDFViewerHandle } from "@/app/components/PDFViewer";
+import { PageAccordion } from "@/components/pageAccordion";
+import ProgressBarOverall from "@/components/ProgressBarOverall";
+import { usePdfPage } from "@/app/pdf/pages/context";
+import { useRef, useEffect } from "react";
 
+export default function PagesView() {
+  const params = useParams();
+  const storageId = params.storageId as Id<"pdfs">;
+  const { page, setPage } = usePdfPage();
+  const viewerRef = useRef<PDFViewerHandle>(null);
 
+  // Get PDF data
+  const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
+  const fileUrl = useQuery(
+    api.files.queries.getFileDownloadUrl,
+    pdf?.fileId ? { fileId: pdf.fileId } : "skip"
+  );
 
+  // Get pages data for accordion
+  const pages = useQuery(api.pdf.queries.getPagesByPdf, { pdfId: storageId });
 
-export default function PdfPages() {
-  const { pdfId } = useParams<{ pdfId: string }>();
-  const searchParams = useSearchParams();
-  const pageId = searchParams.get("pageId");
+  // Handle page changes from PDFViewer
+  const handlePageChange = (pageNumber: number) => {
+    setPage(pageNumber);
+  };
 
-  /* Log once on mount; eslint rule for console is disabled in repo already */
-  console.log("pdfId →", pdfId, "pageId →", pageId);
+  // Sync context page changes to PDFViewer
+  useEffect(() => {
+    if (page && viewerRef.current) {
+      viewerRef.current.goToPage(page);
+    }
+  }, [page]);
+
+  if (!pdf || !pages) {
+    return (
+      <div className="flex items-center justify-center h-full text-white">
+        Loading...
+      </div>
+    );
+  }
 
   return (
-    <main className="container mx-auto p-4">
-      <Accordion type="single" collapsible className="w-full">
-        <AccordionItem value="item-1">
-          <AccordionTrigger>Hello Accordion</AccordionTrigger>
-          <AccordionContent>
-            Placeholder – real page content coming in FE-02 +
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-    </main>
+    <div
+      className="h-screen flex gap-2 p-4 overflow-hidden"
+      style={{
+        backgroundImage: 'url("/background.png")',
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      {/* Progress Bar */}
+      <ProgressBarOverall pdfId={storageId} />
+
+      {/* RTL Layout: Accordion on right, Viewer on left */}
+      <div className="flex w-full gap-2" dir="rtl">
+        {/* PageAccordion */}
+        <div className="w-[40%] overflow-y-auto">
+          <PageAccordion pages={pages} />
+        </div>
+
+        {/* PDFViewer */}
+        <div className="flex-1">
+          <PDFViewer
+            ref={viewerRef}
+            pdfUrl={fileUrl || null}
+            initialPage={1}
+            onPageChange={handlePageChange}
+          />
+        </div>
+      </div>
+    </div>
   );
 }

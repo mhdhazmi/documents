@@ -1,7 +1,7 @@
 // app/components/PageAccordion/PageAccordion.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   Accordion,
@@ -12,6 +12,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import OcrStepperMini from "@/components/OcrStepperMini";
 import type { PdfPageInfo } from "@/app/pdf/types";
+import StreamedTextBox from "@/app/pdf/StreamedTextBox";
+import { usePdfPage } from "@/app/pdf/pages/context";
+import { useKickClean } from "@/app/pdf/[storageId]/hooks/useKickClean";
+
 interface PageAccordionProps {
   /** Array produced by usePagesQuery(pdfId) */
   pages: PdfPageInfo[];
@@ -47,12 +51,53 @@ const convertToOcrStatus = (
   return "pending"; // fallback
 };
 
+// Component to handle hooks for each page
+function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
+  // Call useKickClean for both sources
+  useKickClean({ pageId: page.pageId, src: "gemini" });
+  useKickClean({ pageId: page.pageId, src: "replicate" });
+
+  return (
+    <>
+      {/* Gemini OCR Section */}
+      <div>
+        <h4 className="text-sm font-medium text-blue-600 mb-2 text-right">
+          نموذج جيميني
+        </h4>
+        <StreamedTextBox pageId={page.pageId} src="gemini" />
+      </div>
+
+      {/* Replicate OCR Section */}
+      <div>
+        <h4 className="text-sm font-medium text-purple-600 mb-2 text-right">
+          نموذج ريبليكيت
+        </h4>
+        <StreamedTextBox pageId={page.pageId} src="replicate" />
+      </div>
+    </>
+  );
+}
+
 export function PageAccordion({
   pages,
   defaultOpen = null,
   className,
 }: PageAccordionProps) {
   const [value, setValue] = useState(defaultOpen ? defaultOpen.toString() : "");
+  const { page: currentPage, setPage } = usePdfPage(); // Get context
+
+  // FE-15: Auto-expand accordion when page changes from PDFViewer
+  useEffect(() => {
+    if (currentPage && currentPage.toString() !== value) {
+      setValue(currentPage.toString());
+
+      // Scroll to the active row with delay to ensure DOM is updated
+      setTimeout(() => {
+        const element = document.querySelector(`[data-page="${currentPage}"]`);
+        element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100);
+    }
+  }, [currentPage, value]);
 
   // Loading state
   if (!pages) {
@@ -73,8 +118,15 @@ export function PageAccordion({
         onValueChange={setValue}
       >
         {pages.map((page) => (
-          <AccordionItem key={page.pageId} value={page.pageNumber.toString()}>
-            <AccordionTrigger className="flex items-center justify-between gap-2">
+          <AccordionItem
+            key={page.pageId}
+            value={page.pageNumber.toString()}
+            data-page={page.pageNumber} // For scrolling reference
+          >
+            <AccordionTrigger
+              className="flex items-center justify-between gap-2"
+              onClick={() => setPage(page.pageNumber)} // FE-14: Jump to page when clicked
+            >
               <span className="font-medium text-right">
                 صفحة {page.pageNumber}
               </span>
@@ -97,8 +149,9 @@ export function PageAccordion({
                 </div>
               </div>
             </AccordionTrigger>
-
-            <AccordionContent className="space-y-6"></AccordionContent>
+            <AccordionContent className="space-y-6">
+              <PageContentWithKicks page={page} />
+            </AccordionContent>
           </AccordionItem>
         ))}
       </Accordion>
