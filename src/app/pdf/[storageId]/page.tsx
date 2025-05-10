@@ -19,7 +19,7 @@ export default function PdfView() {
   const params = useParams()
   const jobId = params.storageId as Id<'pdfs'>
 
-  redirect(`/pdf/${jobId}/pages`);  
+  // redirect(`/pdf/${jobId}/pages`);  
 
   // Data-loading hooks
   const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId })

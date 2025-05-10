@@ -1,12 +1,6 @@
-// components/ocr/OcrStepperMini.tsx
+// /components/ocr/OcrStepperMini.tsx
 import { cn } from "@/lib/utils";
-import { getStatusColor } from "@/lib/ocrColors";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type OcrStatus = "pending" | "processing" | "completed" | "failed";
 
@@ -15,21 +9,25 @@ interface OcrStepperMiniProps {
   status: OcrStatus;
 }
 
-export function OcrStepperMini({ provider, status }: OcrStepperMiniProps) {
-  const statusColor = getStatusColor(status);
-  const label = `${provider} • ${status}`;
-  
+const statusColors = {
+  pending: "bg-muted/30",
+  processing: "bg-yellow-400/80",
+  completed: "bg-emerald-500/90",
+  failed: "bg-destructive"
+};
+
+export default function OcrStepperMini({ provider, status }: OcrStepperMiniProps) {
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            className={cn("h-4 px-2 rounded-full", statusColor)}
-            aria-label={label}
+          <span 
+            className={cn("h-4 px-2 rounded-full", statusColors[status])}
+            aria-label={`${provider} OCR status: ${status}`}
           />
         </TooltipTrigger>
         <TooltipContent>
-          {label}
+          {provider.charAt(0).toUpperCase() + provider.slice(1)} • {status}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

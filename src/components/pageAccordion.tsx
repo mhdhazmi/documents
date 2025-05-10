@@ -10,9 +10,8 @@ import {
   AccordionContent,
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OcrStepperMini } from "@/components/OcrStepperMini";
+import OcrStepperMini from "@/components/OcrStepperMini";
 import type { PdfPageInfo } from "@/app/pdf/types";
-
 interface PageAccordionProps {
   /** Array produced by usePagesQuery(pdfId) */
   pages: PdfPageInfo[];
@@ -39,7 +38,9 @@ const EmptyState = ({ title }: { title: string }) => (
 );
 
 // Helper function to convert our OcrStatus to the type expected by OcrStepperMini
-const convertToOcrStatus = (status: string): "pending" | "processing" | "completed" | "failed" => {
+const convertToOcrStatus = (
+  status: string
+): "pending" | "processing" | "completed" | "failed" => {
   if (["pending", "processing", "completed", "failed"].includes(status)) {
     return status as "pending" | "processing" | "completed" | "failed";
   }
@@ -51,9 +52,7 @@ export function PageAccordion({
   defaultOpen = null,
   className,
 }: PageAccordionProps) {
-  const [value, setValue] = useState(
-    defaultOpen ? defaultOpen.toString() : ""
-  );
+  const [value, setValue] = useState(defaultOpen ? defaultOpen.toString() : "");
 
   // Loading state
   if (!pages) {
@@ -76,12 +75,14 @@ export function PageAccordion({
         {pages.map((page) => (
           <AccordionItem key={page.pageId} value={page.pageNumber.toString()}>
             <AccordionTrigger className="flex items-center justify-between gap-2">
-              <span className="font-medium text-right">صفحة {page.pageNumber}</span>
+              <span className="font-medium text-right">
+                صفحة {page.pageNumber}
+              </span>
               <div className="flex flex-col gap-1">
                 {/* Gemini provider + status pill */}
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-blue-600">Gemini</span>
-                  <OcrStepperMini 
+                  <OcrStepperMini
                     provider="gemini"
                     status={convertToOcrStatus(page.geminiStatus)}
                   />
@@ -89,16 +90,15 @@ export function PageAccordion({
                 {/* Replicate provider + status pill */}
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-purple-600">Replicate</span>
-                  <OcrStepperMini 
+                  <OcrStepperMini
                     provider="replicate"
                     status={convertToOcrStatus(page.replicateStatus)}
                   />
                 </div>
               </div>
             </AccordionTrigger>
-            <AccordionContent>
-              {/* Empty for now – FE-06 will add the cleaned text preview */}
-            </AccordionContent>
+
+            <AccordionContent className="space-y-6"></AccordionContent>
           </AccordionItem>
         ))}
       </Accordion>
