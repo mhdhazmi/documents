@@ -4578,26 +4578,102 @@ module.exports = nextConfig;
 // File Path: project-structure.txt
 
 [dir]  .next/
-[file] package-lock.json
-[file] package.json
-[dir]  node_modules/
-[file] tailwind.config.ts
-[file] next.config.ts
-[dir]  .git/
+[dir]  .next/cache/
+[dir]  .next/cache/images/
+[dir]  .next/cache/images/khLohs3sU48fkkOJb_AvcN8eWmQoTkPIgFLYyXIhkZM/
+[dir]  .next/cache/images/lkGTckl_N0rZoyS3H7X0-JsbjylLjH72iuON0K_PVpk/
+[dir]  .next/cache/images/MbtBF8NAd-kiJxVMwp9ZDgH3woFCaIb4HxhXot24Uz4/
+[dir]  .next/cache/images/QFnq_OyjVY1lWN_xIqvolLj0Q6P2SkaVZP9z_e-2ze4/
+[dir]  .next/cache/images/qQv0Z5n05_y7x4Nkcvp12IqyGuizoM8JT85YvsVHYVA/
+[dir]  .next/cache/swc/
+[dir]  .next/cache/swc/plugins/
+[dir]  .next/cache/swc/plugins/v7_windows_x86_64_8.0.0/
+[dir]  .next/cache/webpack/
+[dir]  .next/cache/webpack/client-development/
+[dir]  .next/cache/webpack/client-development-fallback/
+[dir]  .next/cache/webpack/server-development/
+[dir]  .next/server/
+[dir]  .next/server/app/
+[dir]  .next/server/app/_not-found/
+[dir]  .next/server/app/chat/
+[dir]  .next/server/app/pdf/
+[dir]  .next/server/app/pdf/[storageId]/
+[dir]  .next/server/app/pdf/[storageId]/pages/
+[dir]  .next/server/vendor-chunks/
+[dir]  .next/static/
+[dir]  .next/static/chunks/
+[dir]  .next/static/chunks/app/
+[dir]  .next/static/chunks/app/_not-found/
+[dir]  .next/static/chunks/app/chat/
+[dir]  .next/static/chunks/app/pdf/
+[dir]  .next/static/chunks/app/pdf/[storageId]/
+[dir]  .next/static/chunks/app/pdf/[storageId]/pages/
+[dir]  .next/static/css/
+[dir]  .next/static/css/app/
+[dir]  .next/static/development/
+[dir]  .next/static/media/
+[dir]  .next/static/webpack/
+[dir]  .next/static/webpack/app/
+[dir]  .next/static/webpack/app/chat/
+[dir]  .next/static/webpack/app/pdf/
+[dir]  .next/static/webpack/app/pdf/[storageId]/
+[dir]  .next/static/webpack/app/pdf/[storageId]/pages/
+[dir]  .next/types/
+[dir]  .next/types/app/
+[dir]  .next/types/app/chat/
+[dir]  .next/types/app/pdf/
+[dir]  .next/types/app/pdf/[storageId]/
+[dir]  .next/types/app/pdf/[storageId]/pages/
 [dir]  convex/
-[file] tsconfig.tsbuildinfo
-[file] postcss.config.mjs
-[file] tailwind.config.mjs
+[dir]  convex/_generated/
+[dir]  convex/concatenate/
+[dir]  convex/files/
+[dir]  convex/ingest/
+[dir]  convex/ocr/
+[dir]  convex/ocr/gemini/
+[dir]  convex/ocr/openai/
+[dir]  convex/ocr/replicate/
+[dir]  convex/pdf/
+[dir]  convex/serve/
+[dir]  convex/utils/
+[dir]  convex/workflow/
 [dir]  public/
 [dir]  src/
-[file] components.json
-[dir]  .cursor/
+[dir]  src/app/
+[dir]  src/app/chat/
+[dir]  src/app/components/
+[dir]  src/app/pdf/
+[dir]  src/app/pdf/[storageId]/
+[dir]  src/app/pdf/[storageId]/components/
+[dir]  src/app/pdf/[storageId]/hooks/
+[dir]  src/app/pdf/[storageId]/pages/
+[dir]  src/app/pdf/[storageId]/types/
+[dir]  src/app/pdf/[storageId]/utils/
+[dir]  src/app/pdf/hooks/
+[dir]  src/app/pdf/pages/
+[dir]  src/components/
+[dir]  src/components/ui/
+[dir]  src/lib/
+[dir]  src/services/
+[dir]  src/store/
+[dir]  src/utils/
+[file] .env
+[file] .env.local
 [file] .gitignore
-[dir]  .vscode/
-[file] tsconfig.json
-[file] next-env.d.ts
+[file] components.json
+[file] copy_content.sh
 [file] eslint.config.mjs
-[file] README.md 
+[file] next-env.d.ts
+[file] next.config.ts
+[file] package-lock.json
+[file] package.json
+[file] postcss.config.mjs
+[file] project_contents.txt
+[file] project-structure.txt
+[file] README.md
+[file] tailwind.config.ts
+[file] tsconfig.json
+[file] tsconfig.tsbuildinfo 
 
 
 // File Path: project_contents.txt
@@ -4975,6 +5051,7 @@ import React, {
   useRef,
   forwardRef,
   useImperativeHandle,
+  useState,
 } from "react";
 import * as pdfjs from "pdfjs-dist";
 
@@ -4985,6 +5062,8 @@ interface PDFViewerProps {
   pdfUrl: string | null;
   initialPage?: number;
   onPageChange?: (page: number) => void;
+  fitToWidth?: boolean;
+  maxScale?: number;
 }
 
 export interface PDFViewerHandle {
@@ -4992,10 +5071,31 @@ export interface PDFViewerHandle {
 }
 
 const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
-  ({ pdfUrl, initialPage = 1, onPageChange }, ref) => {
+  (
+    {
+      pdfUrl,
+      initialPage = 1,
+      onPageChange,
+      fitToWidth = true,
+      maxScale = 2.0,
+    },
+    ref
+  ) => {
     const containerRef = useRef<HTMLDivElement>(null);
+    const canvasContainerRef = useRef<HTMLDivElement>(null);
     const currentPageRef = useRef(initialPage);
     const pdfDocumentRef = useRef<pdfjs.PDFDocumentProxy | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [currentFitMode, setCurrentFitMode] = useState(fitToWidth);
+
+    // Update fit mode when prop changes
+    useEffect(() => {
+      setCurrentFitMode(fitToWidth);
+      if (pdfDocumentRef.current) {
+        renderPage(currentPageRef.current);
+      }
+    }, [fitToWidth]);
 
     // Expose goToPage method via ref
     useImperativeHandle(ref, () => ({
@@ -5006,32 +5106,69 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
       },
     }));
 
+    const calculateScale = (
+      viewport: pdfjs.PageViewport,
+      containerWidth: number,
+      containerHeight: number
+    ): number => {
+      if (!currentFitMode) return 1.0;
+
+      // Calculate scale to fit both width and height
+      const widthScale = containerWidth / viewport.width;
+      const heightScale = containerHeight / viewport.height;
+
+      // Use the smaller scale to ensure the page fits in both dimensions
+      const scale = Math.min(widthScale, heightScale);
+
+      // Clamp the scale between 0.1 and maxScale
+      return Math.min(Math.max(scale, 0.1), maxScale);
+    };
+
     const renderPage = async (pageNumber: number) => {
-      if (!pdfDocumentRef.current || !containerRef.current) return;
+      if (
+        !pdfDocumentRef.current ||
+        !containerRef.current ||
+        !canvasContainerRef.current
+      )
+        return;
 
       try {
+        setIsLoading(true);
+        setError(null);
+
         const page = await pdfDocumentRef.current.getPage(pageNumber);
+        const container = containerRef.current;
+        const canvasContainer = canvasContainerRef.current;
+
+        // Get the container dimensions
+        const containerWidth = container.clientWidth - 40; // Account for padding
+        const containerHeight = container.clientHeight - 40; // Account for padding
+
+        // Get viewport with default scale first
         const viewport = page.getViewport({ scale: 1.0 });
 
-        // Set container size
-        const container = containerRef.current;
-        container.style.width = `${viewport.width}px`;
-        container.style.height = `${viewport.height}px`;
+        // Calculate appropriate scale to fit
+        const scale = calculateScale(viewport, containerWidth, containerHeight);
+        const scaledViewport = page.getViewport({ scale });
 
         // Create canvas
         const canvas = document.createElement("canvas");
         const context = canvas.getContext("2d")!;
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
+        canvas.height = scaledViewport.height;
+        canvas.width = scaledViewport.width;
 
         // Clear container and append canvas
-        container.innerHTML = "";
-        container.appendChild(canvas);
+        canvasContainer.innerHTML = "";
+        canvasContainer.appendChild(canvas);
+
+        // Center the canvas in the container
+        canvas.style.display = "block";
+        canvas.style.margin = "0 auto";
 
         // Render page
         await page.render({
           canvasContext: context,
-          viewport: viewport,
+          viewport: scaledViewport,
         }).promise;
 
         // Update current page and notify parent
@@ -5039,21 +5176,44 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
         onPageChange?.(pageNumber);
       } catch (error) {
         console.error("Error rendering page:", error);
+        setError(
+          `خطأ في عرض الصفحة: ${error instanceof Error ? error.message : String(error)}`
+        );
+      } finally {
+        setIsLoading(false);
       }
     };
 
     useEffect(() => {
       if (!pdfUrl) return;
 
+      let mounted = true;
       const loadPDF = async () => {
         try {
-          const pdf = await pdfjs.getDocument(pdfUrl).promise;
-          pdfDocumentRef.current = pdf;
+          setIsLoading(true);
+          setError(null);
 
+          const pdf = await pdfjs.getDocument(pdfUrl).promise;
+
+          if (!mounted) {
+            pdf.destroy();
+            return;
+          }
+
+          pdfDocumentRef.current = pdf;
           // Render initial page
-          renderPage(initialPage);
+          await renderPage(initialPage);
         } catch (error) {
           console.error("Error loading PDF:", error);
+          if (mounted) {
+            setError(
+              `خطأ في تحميل الملف: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+        } finally {
+          if (mounted) {
+            setIsLoading(false);
+          }
         }
       };
 
@@ -5061,12 +5221,34 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
 
       // Cleanup
       return () => {
+        mounted = false;
         if (pdfDocumentRef.current) {
           pdfDocumentRef.current.destroy();
           pdfDocumentRef.current = null;
         }
       };
-    }, [pdfUrl]);
+    }, [pdfUrl, initialPage]);
+
+    // Handle window resize
+    useEffect(() => {
+      const handleResize = () => {
+        if (pdfDocumentRef.current) {
+          renderPage(currentPageRef.current);
+        }
+      };
+
+      let timeoutId: NodeJS.Timeout;
+      const debouncedResize = () => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(handleResize, 150);
+      };
+
+      window.addEventListener("resize", debouncedResize);
+      return () => {
+        window.removeEventListener("resize", debouncedResize);
+        clearTimeout(timeoutId);
+      };
+    }, []);
 
     // Handle keyboard navigation
     useEffect(() => {
@@ -5092,17 +5274,44 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, []);
 
+    if (error) {
+      return (
+        <div className="flex items-center justify-center h-full text-red-400 bg-red-900/10 rounded-lg border border-red-500/20 p-4">
+          <div className="text-center">
+            <p className="text-sm">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-2 text-xs text-red-400 hover:text-red-300 transition-colors"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="col-start-1 row-start-1 h-full w-full overflow-auto rounded-2xl border border-white/20 bg-white/10 p-2 backdrop-blur-md">
-        {pdfUrl ? (
-          <div
-            ref={containerRef}
-            className="w-full h-full mx-auto"
-            style={{ maxWidth: "100%", maxHeight: "100%" }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full text-white">
-            <p className="text-center mb-2">اسأل سؤالاً لعرض المستند المناسب</p>
+      <div
+        ref={containerRef}
+        className="relative w-full h-full overflow-hidden bg-white/10 rounded-lg p-4"
+      >
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm rounded-lg z-10">
+            <div className="flex items-center gap-3 text-white">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-400"></div>
+              <span>جاري تحميل الملف...</span>
+            </div>
+          </div>
+        )}
+
+        <div
+          ref={canvasContainerRef}
+          className="w-full h-full flex items-center justify-center"
+        />
+
+        {pdfUrl && !isLoading && !error && (
+          <div className="absolute bottom-2 left-2 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
+            صفحة {currentPageRef.current} من {pdfDocumentRef.current?.numPages}
           </div>
         )}
       </div>
@@ -5217,6 +5426,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
 
 // File Path: src/app/globals.css
 
+/* src/app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5307,6 +5517,55 @@ html, body {
   body {
     @apply bg-background text-foreground;
     font-family: 'IBM Plex Sans Arabic', sans-serif;
+  }
+}
+
+/* Custom Scrollbar Styles */
+@layer utilities {
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-emerald-950/30 backdrop-blur-sm rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-emerald-500/60 rounded-full transition-colors duration-200;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-emerald-500/80;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    @apply bg-emerald-500;
+  }
+
+  /* Firefox */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(16 185 129 / 0.6) rgb(6 78 59 / 0.3);
+  }
+
+  /* Thin scrollbar variant */
+  .custom-scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .custom-scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-emerald-500/40 rounded-full;
+  }
+
+  .custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-emerald-500/60;
   }
 }
 
@@ -5716,6 +5975,8 @@ import { usePageStream, selectChunk } from "@/store/pageStreams";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { motion } from "motion/react";
+import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 interface StreamedTextBoxProps {
   pageId: Id<"pages">;
@@ -5743,20 +6004,60 @@ export default function StreamedTextBox({ pageId, src }: StreamedTextBoxProps) {
   );
 
   const isCompleted = cleaningResults?.cleaningStatus === "completed";
-  const hasText = chunks.length > 0;
+  const hasText = chunks && chunks.length > 0;
+  const ocrStatus = pageResults?.ocrResults?.ocrStatus;
+
+  // Determine status icon and message
+  let statusIcon;
+  let statusMessage;
+
+  if (isCompleted) {
+    statusIcon = <CheckCircle className="w-4 h-4 text-emerald-400" />;
+    statusMessage = "اكتملت المعالجة";
+  } else if (ocrStatus === "failed") {
+    statusIcon = <AlertCircle className="w-4 h-4 text-red-400" />;
+    statusMessage = "فشلت المعالجة";
+  } else if (ocrStatus === "completed" && !hasText) {
+    statusIcon = <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+    statusMessage = "جاري تنقيح النص...";
+  } else if (ocrStatus === "processing") {
+    statusIcon = <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />;
+    statusMessage = "جاري معالجة النص...";
+  } else {
+    statusIcon = <div className="w-4 h-4 rounded-full bg-gray-400/30" />;
+    statusMessage = "في انتظار المعالجة...";
+  }
 
   return (
-    <div className="relative">
+    <motion.div
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="relative space-y-2"
+    >
+      {/* Status Header */}
+      <div className="flex items-center gap-2 text-xs text-white/70">
+        {statusIcon}
+        <span>{statusMessage}</span>
+      </div>
+
+      {/* Text Content */}
       {!hasText && !isCompleted ? (
-        <div className="min-h-[80px] flex items-center justify-center bg-white/10 backdrop-blur-md rounded-lg border border-white/20 p-4">
+        <div className="min-h-[100px] flex items-center justify-center bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4">
           <TypingIndicator />
         </div>
       ) : (
-        <pre className="min-h-[80px] max-h-[200px] overflow-y-auto text-white/90 bg-white/10 backdrop-blur-md rounded-lg border border-white/20 p-4 text-right font-sans text-2xl whitespace-pre-wrap">
-          {chunks || "يتم الآن معالجة النصوص..."}
-        </pre>
+        <motion.div
+          initial={{ height: 0 }}
+          animate={{ height: "auto" }}
+          transition={{ duration: 0.3 }}
+          className="overflow-hidden"
+        >
+          <pre className="min-h-[100px] max-h-[250px] overflow-y-auto text-white/90 bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4 text-right font-sans text-xl whitespace-pre-wrap leading-relaxed">
+            {chunks || "في انتظار المعالجة..."}
+          </pre>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -6160,2308 +6461,4 @@ export default function PdfPreviewSection({pdfUrl}: {pdfUrl: string | null}) {
 
 
 // File Path: src/app/pdf/[storageId]/components/ReplicateOCRSection.tsx
-
-import React from 'react'
-import MDXEditorWrapper from './MDXEditorWrapper'
-import { formatTimestamp } from '../utils/formatUtils'
-
-interface ReplicateOCRProps {
-  replicateResults: {
-    ocrResults?: {
-      processedAt?: number;
-      replicateModelId?: string;
-      extractedText?: string;
-    }
-  } | null | undefined;
-  editedReplicateText: string;
-  handleReplicateTextChange: (text: string) => void;
-}
-
-const ReplicateOCRSection = ({ 
-  replicateResults, 
-  editedReplicateText, 
-  handleReplicateTextChange 
-}: ReplicateOCRProps) => {
-  return (
-    <div className="bg-purple-100 p-4 rounded-lg mb-2">
-      <h3 className="text-xl font-medium text-purple-800 mb-2">Replicate OCR</h3>
-      {replicateResults?.ocrResults ? (
-        <div>
-          <div className="text-sm text-gray-600 mb-2">
-            Processed: {formatTimestamp(replicateResults.ocrResults.processedAt)}
-            <span className="ml-2">| Model: {replicateResults.ocrResults.replicateModelId}</span>
-          </div>
-          <MDXEditorWrapper 
-            markdown={editedReplicateText} 
-            onChange={handleReplicateTextChange} 
-          />
-        </div>
-      ) : (
-        <div className="text-gray-500 italic">يتم الآن معالجة النصوص</div>
-      )}
-    </div>
-  )
-}
-
-export default ReplicateOCRSection 
-
-
-// File Path: src/app/pdf/[storageId]/components/SkeletonLoader.tsx
-
-import React from 'react';
-
-export default function SkeletonLoader() {
-  return (
-    <div 
-      className='flex flex-row items-start justify-center min-h-screen p-4 animate-pulse'
-      style={{
-        backgroundImage: 'url("/background.png")',
-        backgroundSize: 'contain',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
-      }}
-    >
-      {/* PDF Viewer Skeleton */}
-      <div className="w-1/2 pr-2">
-        <div className="w-full h-[900px] bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl"></div>
-      </div>
-      
-      {/* OCR Results Skeleton */}
-      <div className="w-1/2 pl-4 pr-2">
-        <div className="h-8 w-64 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl mb-6"></div>
-        
-        {/* Gemini Results Skeleton */}
-        <div className="mb-8">
-          <div className="h-6 w-48 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl mb-3"></div>
-          <div className="h-32 w-full bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl mb-3"></div>
-          <div className="flex space-x-2 mb-6">
-            <div className="h-8 w-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl"></div>
-            <div className="h-8 w-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl"></div>
-          </div>
-        </div>
-        
-        {/* Replicate Results Skeleton */}
-        <div className="mb-8">
-          <div className="h-6 w-48 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl mb-3"></div>
-          <div className="h-32 w-full bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl mb-3"></div>
-          <div className="flex space-x-2 mb-6">
-            <div className="h-8 w-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl"></div>
-            <div className="h-8 w-20 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-} 
-
-
-// File Path: src/app/pdf/[storageId]/hooks/useKickClean.tsx
-
-// src/app/pdf/hooks/useKickClean.tsx
-"use client";
-
-import { useEffect } from "react";
-import { useQuery } from "convex/react";
-import { api } from "../../../../../convex/_generated/api";
-import { Id } from "../../../../../convex/_generated/dataModel";
-import { streamCleanPage } from "@/app/pdf/pages/StreamCleanPage";
-import { usePageStream } from "@/store/pageStreams";
-
-interface UseKickCleanProps {
-  pageId: Id<"pages">;
-  src: "gemini" | "replicate";
-}
-
-export function useKickClean({ pageId, src }: UseKickCleanProps) {
-  const { setChunk, chunks, inFlight, markInFlight, clearInFlight } =
-    usePageStream();
-
-  // Monitor OCR status based on source
-  const ocrResults = useQuery(
-    src === "gemini"
-      ? api.ocr.gemini.queries.getPageOcrResults
-      : api.ocr.replicate.queries.getPageOcrResults,
-    { pageId }
-  );
-
-  useEffect(() => {
-    const key = `${pageId}_${src}` as const;
-    const ocrCompleted = ocrResults?.ocrResults?.ocrStatus === "completed";
-    const hasChunk = chunks[key]?.length > 0;
-
-    if (ocrCompleted && !hasChunk && !inFlight.has(key)) {
-      markInFlight(key);
-      console.log(`Triggering ${src} clean for page ${pageId}`);
-
-      streamCleanPage(pageId, src, (chunk) => {
-        setChunk(key, chunk);
-      })
-        .catch((error) => {
-          console.error(`Error streaming ${src} cleanup:`, error);
-        })
-        .finally(() => {
-          clearInFlight(key);
-        });
-    }
-  }, [
-    pageId,
-    src,
-    ocrResults?.ocrResults?.ocrStatus,
-    chunks,
-    inFlight,
-    markInFlight,
-    clearInFlight,
-    setChunk,
-  ]);
-}
-
-
-
-// File Path: src/app/pdf/[storageId]/hooks/useOcrProcessing.tsx
-
-// First, let's create a custom hook for OCR processing
-
-// src/app/pdf/[storageId]/hooks/useOcrProcessing.ts
-import { useState, useEffect } from 'react';
-import { useQuery } from 'convex/react';
-import { api } from '../../../../../convex/_generated/api';
-import { Id } from '../../../../../convex/_generated/dataModel';
-import { streamClean } from '../streamClean';
-
-export interface OcrState {
-  geminiText: string;
-  replicateText: string;
-  isGeminiProcessing: boolean;
-  isReplicateProcessing: boolean;
-  error: string | null;
-}
-
-export function useOcrProcessing(pdfId: Id<'pdfs'>) {
-  const [state, setState] = useState<OcrState>({
-    geminiText: '',
-    replicateText: '',
-    isGeminiProcessing: false,
-    isReplicateProcessing: false,
-    error: null
-  });
-
-  // Fetch OCR results for Gemini and Replicate
-  const geminiJobStatus = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId });
-  const replicateJobStatus = useQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId });
-  
-  // Fetch cleaned results if they exist
-  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, { 
-    pdfId, 
-    source: 'gemini' 
-  });
-  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, { 
-    pdfId, 
-    source: 'replicate' 
-  });
-
-  // Process Gemini results
-  useEffect(() => {
-    // Only run once when status changes to completed and text is empty
-    if (geminiJobStatus?.[0]?.ocrStatus === 'completed' && !state.geminiText && !state.isGeminiProcessing) {
-      setState(prev => ({ ...prev, isGeminiProcessing: true }));
-      
-      // Check if cleaned results already exist
-      if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
-        setState(prev => ({ 
-          ...prev, 
-          geminiText: openaiGeminiResults[0].cleanedText,
-          isGeminiProcessing: false 
-        }));
-      } else {
-        // Stream clean the results
-        streamClean(
-          pdfId as string, 
-          'gemini', 
-          chunk => setState(prev => ({ ...prev, geminiText: chunk }))
-        )
-        .catch(error => {
-          console.error('Error streaming Gemini cleanup:', error);
-          setState(prev => ({ 
-            ...prev, 
-            error: `Failed to process Gemini OCR: ${error.message}`,
-            isGeminiProcessing: false 
-          }));
-        })
-        .finally(() => {
-          setState(prev => ({ ...prev, isGeminiProcessing: false }));
-        });
-      }
-    }
-  }, [geminiJobStatus, openaiGeminiResults, pdfId, state.geminiText, state.isGeminiProcessing]);
-
-  // Process Replicate results (same pattern)
-  useEffect(() => {
-    if (replicateJobStatus?.[0]?.ocrStatus === 'completed' && !state.replicateText && !state.isReplicateProcessing) {
-      setState(prev => ({ ...prev, isReplicateProcessing: true }));
-      
-      if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
-        setState(prev => ({ 
-          ...prev, 
-          replicateText: openaiReplicateResults[0].cleanedText,
-          isReplicateProcessing: false 
-        }));
-      } else {
-        streamClean(
-          pdfId as string, 
-          'replicate', 
-          chunk => setState(prev => ({ ...prev, replicateText: chunk }))
-        )
-        .catch(error => {
-          console.error('Error streaming Replicate cleanup:', error);
-          setState(prev => ({ 
-            ...prev, 
-            error: `Failed to process Replicate OCR: ${error.message}`,
-            isReplicateProcessing: false 
-          }));
-        })
-        .finally(() => {
-          setState(prev => ({ ...prev, isReplicateProcessing: false }));
-        });
-      }
-    }
-  }, [replicateJobStatus, openaiReplicateResults, pdfId, state.replicateText, state.isReplicateProcessing]);
-
-  return {
-    geminiText: state.geminiText || 'يتم الآن تحليل الملف وتحويله إلى نص',
-    replicateText: state.replicateText || 'يتم الآن تحليل الملف وتحويله إلى نص',
-    isGeminiProcessing: state.isGeminiProcessing,
-    isReplicateProcessing: state.isReplicateProcessing,
-    error: state.error
-  };
-}
-
-
-// File Path: src/app/pdf/[storageId]/OCRfile.tsx
-
-import React from 'react'
-
-interface OCRfileProps {
-  textToDisplay: string;
-  closed: boolean;
-  hide?: boolean;
-}
-
-export default function OCRfile({ 
-  textToDisplay, 
-  closed, 
-  hide = false
-}: OCRfileProps) {
-  const modelLabel = closed ? 
-    'نموذج مغلق المصدر (لا يمكن استضافته داخل الوزارة)' : 
-    'نموذج مفتوح المصدر (يمكن استضافته داخل الوزارة)';
-    
-  return (
-    <div className="bg-emerald-950/70 backdrop-blur-md p-3 md:p-4 rounded-lg border border-white/20 shadow-lg">
-      <div className="flex flex-col w-full overflow-y-auto">
-        <h3 className="text-base md:text-lg font-medium mb-2 text-white text-right">
-          {modelLabel}
-        </h3>
-        
-        <div className="relative">
-          {/* Only show content if not hidden */}
-          {!hide ? (
-            <div 
-              className="prose max-w-full text-black bg-white/90 p-3 rounded-lg border border-emerald-800/20 min-h-[150px] md:min-h-[200px] max-h-[200px] md:max-h-[300px] overflow-y-auto shadow-inner relative animate-in fade-in duration-500"
-              dir="rtl"
-            >
-            
-              <pre className="whitespace-pre-wrap text-right font-sans text-sm md:text-base">{textToDisplay}</pre>
-            </div>
-          ) : (
-            <div 
-              className="prose max-w-full bg-white/5 backdrop-blur-md p-3 rounded-lg border border-emerald-800/10 min-h-[50px] md:min-h-[80px] shadow-inner relative flex items-center justify-center"
-            >
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-// File Path: src/app/pdf/[storageId]/page.tsx
-
-'use client'
-
-import React, { useState, useEffect } from 'react'
-import { redirect, useParams } from 'next/navigation'
-import { useQuery } from 'convex/react'
-import { Id } from '../../../../convex/_generated/dataModel'
-import { api } from '../../../../convex/_generated/api'
-import { streamClean } from './streamClean'
-import OCRfile from './OCRfile'
-import PdfPreviewSection from './components/pdfPreviewSection'
-import GlassmorphicProgressStepper, { OcrStep } from './components/GlassmorphicProgressStepper'
-
-// Import navigation components for FE-02
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-
-export default function PdfView() {
-  // Extract the dynamic segment directly
-  const params = useParams()
-  const jobId = params.storageId as Id<'pdfs'>
-
-  // redirect(`/pdf/${jobId}/pages`);  
-
-  // Data-loading hooks
-  const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId })
-  const jobReplicate = useQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId: jobId })
-  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId, source: 'gemini' })
-  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId, source: 'replicate' })
-
-  const [pdfUrl, setPdfUrl] = useState<string>("");
-  
-  // Initialize state after data is loaded
-  const [initialized, setInitialized] = useState(false);
-  
-  // Track processing state and results
-  const [gBuf, setG] = useState('')
-  const [rBuf, setR] = useState('')
-  const [isLoadingGemini, setIsLoadingGemini] = useState(false)
-  const [isLoadingReplicate, setIsLoadingReplicate] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Track progress steps - don't set initial value yet
-  const [geminiStep, setGeminiStep] = useState<OcrStep>('uploaded')
-  const [replicateStep, setReplicateStep] = useState<OcrStep>('uploaded')
-
-  // Query the PDF data using the storageId
-  const pdfData = useQuery(api.pdf.queries.getPdf, { 
-    pdfId: jobId
-  });
- 
-  // Get the file URL
-  const fileUrl = useQuery(api.files.queries.getFileDownloadUrl, 
-    pdfData?.fileId ? { fileId: pdfData.fileId } : "skip"
-  );
-
-  // Initialize state based on query results
-  useEffect(() => {
-    // Only initialize once all data is available
-    if (!initialized && 
-        job !== undefined && 
-        jobReplicate !== undefined && 
-        openaiGeminiResults !== undefined && 
-        openaiReplicateResults !== undefined) {
-      
-      console.log("Initializing with data:", {
-        geminiStatus: openaiGeminiResults?.[0]?.cleaningStatus,
-        replicateStatus: openaiReplicateResults?.[0]?.cleaningStatus,
-        geminiOcr: job?.[0]?.ocrStatus,
-        replicateOcr: jobReplicate?.[0]?.ocrStatus
-      });
-      
-      // Set initial Gemini state
-      if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
-        setGeminiStep('completed');
-        setG(openaiGeminiResults[0].cleanedText || '');
-        console.log("Setting initial Gemini step to completed");
-      } else if (job?.[0]?.ocrStatus === 'completed') {
-        setGeminiStep('streaming');
-      } else if (job?.[0]?.ocrStatus === 'processing') {
-        setGeminiStep('processing');
-      } else {
-        setGeminiStep('uploaded');
-      }
-      
-      // Set initial Replicate state
-      if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
-        setR(openaiReplicateResults[0].cleanedText || '');
-        setReplicateStep('completed');
-        console.log("Setting initial Replicate step to completed");
-      } else if (jobReplicate?.[0]?.ocrStatus === 'completed') {
-        setReplicateStep('streaming');
-      } else if (jobReplicate?.[0]?.ocrStatus === 'processing') {
-        setReplicateStep('processing');
-      } else {
-        setReplicateStep('uploaded');
-      }
-      
-      setInitialized(true);
-      console.log("Initialization complete");
-    }
-  }, [job, jobReplicate, openaiGeminiResults, openaiReplicateResults, initialized]);
-
-  const gText = gBuf || 'يتم الآن تحليل الملف وتحويله إلى نص'
-  const rText = rBuf || 'يتم الآن تحليل الملف وتحويله إلى نص'
-
-  // Set PDF URL when file data is available
-  useEffect(() => {
-    if (fileUrl) {
-      setPdfUrl(fileUrl);
-    }
-  }, [fileUrl]);
-
-  // Handle Gemini OCR processing - only run after initialization and if not already completed
-  useEffect(() => {
-    if (!initialized || geminiStep === 'completed') return;
-    
-    // If OCR is completed but we don't have results yet, start streaming
-    if (job?.[0]?.ocrStatus === 'completed' && gBuf === "" && !isLoadingGemini) {
-      console.log("Starting Gemini streaming process");
-      setGeminiStep('streaming');
-      setIsLoadingGemini(true);
-      
-      // Stream clean the results
-      streamClean(
-        jobId as string, 
-        'gemini', 
-        chunk => {
-          setG(chunk);
-          if (chunk.length > 0) {
-            console.log("Gemini stream data received, setting to completed");
-            setGeminiStep('completed');
-          }
-        }
-      )
-      .catch(error => {
-        console.error('Error streaming Gemini cleanup:', error);
-        setError(`Failed to process Gemini OCR: ${error.message}`);
-      })
-      .finally(() => {
-        setIsLoadingGemini(false);
-      });
-    }
-  }, [initialized, job, jobId, gBuf, isLoadingGemini, geminiStep]);
-
-  // Handle Replicate OCR processing - only run after initialization and if not already completed
-  useEffect(() => {
-    if (!initialized || replicateStep === 'completed') return;
-    
-    // If OCR is completed but we don't have results yet, start streaming
-    if (jobReplicate?.[0]?.ocrStatus === 'completed' && rBuf === "" && !isLoadingReplicate) {
-      console.log("Starting Replicate streaming process");
-      setReplicateStep('streaming');
-      setIsLoadingReplicate(true);
-      
-      // Stream clean the results
-      streamClean(
-        jobId as string, 
-        'replicate', 
-        chunk => {
-          setR(chunk);
-          if (chunk.length > 0) {
-            console.log("Replicate stream data received, setting to completed");
-            setReplicateStep('completed');
-          }
-        }
-      )
-      .catch(error => {
-        console.error('Error streaming Replicate cleanup:', error);
-        setError(`Failed to process Replicate OCR: ${error.message}`);
-      })
-      .finally(() => {
-        setIsLoadingReplicate(false);
-      });
-    }
-  }, [initialized, jobReplicate, jobId, rBuf, isLoadingReplicate, replicateStep]);
-
-  // Always render with current state
-  return (
-    <div 
-      className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4 overflow-y-auto'
-      style={{
-        backgroundImage: 'url("/background.png")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
-      }}
-    >
-      {error && (
-        <div className="fixed top-4 right-4 bg-red-600/90 backdrop-blur-md text-white px-4 py-2 rounded-lg shadow-lg z-50 max-w-md">
-          <div className="flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <span>{error}</span>
-          </div>
-        </div>
-      )}
-      
-      <div className="w-full md:w-1/2 mb-4 md:mb-0">
-        <PdfPreviewSection pdfUrl={pdfUrl}/>
-      </div>
-      
-      <div className="w-full md:w-1/2 pl-0 md:pl-2">
-        {/* Gemini OCR section */}
-        <div className="mb-6">
-          <GlassmorphicProgressStepper 
-            currentStep={geminiStep} 
-            modelType="gemini" 
-          />
-          <OCRfile
-            textToDisplay={gText}
-            closed={true}
-            hide={geminiStep !== 'completed'}
-          />
-        </div>
-
-        {/* Replicate OCR section */}
-        <div className="mb-6">
-          <GlassmorphicProgressStepper 
-            currentStep={replicateStep} 
-            modelType="replicate" 
-          />
-          <OCRfile
-            textToDisplay={rText}
-            closed={false}
-            hide={replicateStep !== 'completed'}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-// File Path: src/app/pdf/[storageId]/pages/layout.tsx
-
-/* ------------------------------------------------------------------ */
-/* src/app/pdf/[storageId]/pages/layout.tsx                           */
-/* ------------------------------------------------------------------ */
-"use client";
-
-import React from "react";
-import { useParams } from "next/navigation";
-import { PdfPageProvider } from "@/app/pdf/pages/context";
-import { useQuery } from "convex/react";
-import { api } from "../../../../../convex/_generated/api";
-import { Id } from "../../../../../convex/_generated/dataModel";
-
-export default function PagesLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  // ───────────────────────────────────────────────────────────────────
-  // 1. Get the dynamic segment from the url          /pdf/[storageId]/
-  // ───────────────────────────────────────────────────────────────────
-  const { storageId } = useParams<{ storageId: string }>();
-
-  // 2. Load PDF meta-data to know how many pages we have
-  const pdf = useQuery(api.pdf.queries.getPdf, {
-    pdfId: storageId as Id<"pdfs">,
-  });
-
-  const totalPages = pdf?.pageCount ?? 0;
-
-  // 3. Provide page-navigation context to the subtree
-  return (
-    <PdfPageProvider initialPage={1} totalPages={totalPages}>
-      <div className="grid h-full w-full gap-4">{children}</div>
-    </PdfPageProvider>
-  );
-}
-
-
-
-// File Path: src/app/pdf/[storageId]/pages/page.tsx
-
-// src/app/pdf/[storageId]/pages/page.tsx
-"use client";
-
-import { useParams } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "../../../../../convex/_generated/api";
-import { Id } from "../../../../../convex/_generated/dataModel";
-import PDFViewer, { PDFViewerHandle } from "@/app/components/PDFViewer";
-import { PageAccordion } from "@/components/pageAccordion";
-import ProgressBarOverall from "@/components/ProgressBarOverall";
-import { usePdfPage } from "@/app/pdf/pages/context";
-import { useRef, useEffect } from "react";
-
-export default function PagesView() {
-  const params = useParams();
-  const storageId = params.storageId as Id<"pdfs">;
-  const { page, setPage } = usePdfPage();
-  const viewerRef = useRef<PDFViewerHandle>(null);
-
-  // Get PDF data
-  const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
-  const fileUrl = useQuery(
-    api.files.queries.getFileDownloadUrl,
-    pdf?.fileId ? { fileId: pdf.fileId } : "skip"
-  );
-
-  // Get pages data for accordion
-  const pages = useQuery(api.pdf.queries.getPagesByPdf, { pdfId: storageId });
-
-  // Handle page changes from PDFViewer
-  const handlePageChange = (pageNumber: number) => {
-    setPage(pageNumber);
-  };
-
-  // Sync context page changes to PDFViewer
-  useEffect(() => {
-    if (page && viewerRef.current) {
-      viewerRef.current.goToPage(page);
-    }
-  }, [page]);
-
-  if (!pdf || !pages) {
-    return (
-      <div className="flex items-center justify-center h-full text-white">
-        Loading...
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="h-screen flex gap-2 p-4"
-      style={{
-        backgroundImage: 'url("/background.png")',
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-      }}
-    >
-      {/* Progress Bar */}
-      <ProgressBarOverall pdfId={storageId} />
-
-      {/* RTL Layout: Accordion on right, Viewer on left */}
-      <div className="flex w-full gap-2" dir="rtl">
-        {/* PageAccordion */}
-        <div className="w-[40%] overflow-y-auto">
-          <PageAccordion pages={pages} />
-        </div>
-
-        {/* PDFViewer */}
-        <div className="flex-1">
-          <PDFViewer
-            ref={viewerRef}
-            pdfUrl={fileUrl || null}
-            initialPage={1}
-            onPageChange={handlePageChange}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
-// File Path: src/app/pdf/[storageId]/streamClean.ts
-
-export async function streamClean(
-  jobId: string, 
-  src: "gemini" | "replicate", 
-  onChunk: (c: string) => void,
-  onError?: (error: Error) => void
-): Promise<void> {
-  console.log(`Starting stream cleaning for ${src} OCR of PDF ${jobId}`);
-  
-  try {
-    const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL_HTTP}/clean`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Origin": window.location.origin
-      },
-      body: JSON.stringify({ pdfId: jobId, source: src }),
-    });
-
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error(`Error from clean endpoint (${resp.status}):`, errorText);
-      throw new Error(`Server error: ${resp.status} - ${errorText}`);
-    }
-
-    if (!resp.body) {
-      throw new Error('Response body is null');
-    }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let fullText = "";
-    let lastUpdateTime = 0;
-    
-    // Start with an empty update to indicate streaming has begun
-    onChunk("");
-    
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const newChunk = decoder.decode(value, { stream: true });
-      fullText += newChunk;
-      
-      // Throttle updates to reduce UI jitter (every 100ms)
-      const now = Date.now();
-      if (now - lastUpdateTime > 100) {
-        onChunk(fullText);
-        lastUpdateTime = now;
-      }
-    }
-    
-    // Ensure final text is processed with any remaining decoder content
-    const finalChunk = decoder.decode();
-    if (finalChunk) {
-      fullText += finalChunk;
-    }
-    
-    // Final update
-    onChunk(fullText);
-    console.log(`Completed stream cleaning for ${src} OCR of PDF ${jobId}`);
-  } catch (error) {
-    console.error(`Stream clean error for ${src} OCR of PDF ${jobId}:`, error);
-    if (onError && error instanceof Error) {
-      onError(error);
-    } else if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error(String(error));
-    }
-  }
-}
-
-
-// File Path: src/app/pdf/[storageId]/types/index.ts
-
-import { Id } from '../../../../../convex/_generated/dataModel'
-
-export interface GeminiOCRResult {
-  ocrResults?: {
-    processedAt?: number;
-    confidenceScore?: number;
-    extractedText?: string;
-  }
-}
-
-export interface ReplicateOCRResult {
-  ocrResults?: {
-    processedAt?: number;
-    replicateModelId?: string;
-    extractedText?: string;
-  }
-}
-
-export interface OpenAICleanedResult {
-  processedAt?: number;
-  openaiModel?: string;
-  cleanedText?: string;
-  originalSource?: string;
-}
-
-export interface OpenAIResults {
-  ocrResults?: OpenAICleanedResult[];
-}
-
-export type PDFId = Id<"pdfs"> 
-
-
-// File Path: src/app/pdf/[storageId]/utils/formatUtils.ts
-
-/**
- * Formats a timestamp to a localized date string
- */
-export const formatTimestamp = (timestamp?: number) => {
-  if (!timestamp) return 'No timestamp'
-  return new Date(timestamp).toLocaleString()
-} 
-
-
-// File Path: src/components/ConfirmationModal.tsx
-
-"use client";
-
-import { useRef } from 'react';
-
-interface ConfirmationModalProps {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-export default function ConfirmationModal({
-  isOpen,
-  title,
-  message,
-  onConfirm,
-  onCancel
-}: ConfirmationModalProps) {
-  const cancelButtonRef = useRef(null);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-emerald-950/100 backdrop-blur-md border border-white/20 rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl text-white">
-        <h3 className="text-lg font-medium mb-2 text-right">{title}</h3>
-        <p className="text-sm text-white/80 mb-4 text-right">{message}</p>
-        
-        <div className="flex justify-end space-x-3">
-          <button
-            type="button"
-            className="px-4 py-2 text-sm font-medium bg-white/10 border border-white/30 rounded-lg hover:bg-white/20 transition-colors"
-            onClick={onCancel}
-            ref={cancelButtonRef}
-          >
-            الرجوع  
-          </button>
-          <button
-            type="button"
-            className="px-4 py-2 text-sm font-medium text-white bg-white/20 backdrop-blur-sm border border-white/30 rounded-lg hover:bg-white/30 transition-colors"
-            onClick={onConfirm}
-          >
-            تأكيد
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-} 
-
-
-// File Path: src/components/OcrStepperMini.tsx
-
-// /components/ocr/OcrStepperMini.tsx
-import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
-type OcrStatus = "pending" | "processing" | "completed" | "failed";
-
-interface OcrStepperMiniProps {
-  provider: "gemini" | "replicate";
-  status: OcrStatus;
-}
-
-const statusColors = {
-  pending: "bg-muted/30",
-  processing: "bg-yellow-400/80",
-  completed: "bg-emerald-500/90",
-  failed: "bg-destructive"
-};
-
-export default function OcrStepperMini({ provider, status }: OcrStepperMiniProps) {
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span 
-            className={cn("h-4 px-2 rounded-full", statusColors[status])}
-            aria-label={`${provider} OCR status: ${status}`}
-          />
-        </TooltipTrigger>
-        <TooltipContent>
-          {provider.charAt(0).toUpperCase() + provider.slice(1)} • {status}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-
-// File Path: src/components/pageAccordion.tsx
-
-// app/components/PageAccordion/PageAccordion.tsx
-"use client";
-
-import { useState, useEffect } from "react";
-import { cn } from "@/lib/utils";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
-import { Skeleton } from "@/components/ui/skeleton";
-import OcrStepperMini from "@/components/OcrStepperMini";
-import type { PdfPageInfo } from "@/app/pdf/types";
-import StreamedTextBox from "@/app/pdf/StreamedTextBox";
-import { usePdfPage } from "@/app/pdf/pages/context";
-import { useKickClean } from "@/app/pdf/[storageId]/hooks/useKickClean";
-
-interface PageAccordionProps {
-  pages: PdfPageInfo[];
-  defaultOpen?: number | null;
-  className?: string;
-}
-
-// ────────────────────────────────────────────────────────────
-//  Skeleton + Empty-state helpers
-// ────────────────────────────────────────────────────────────
-const AccordionSkeleton = ({ count = 4 }: { count?: number }) => (
-  <div className="space-y-2">
-    {Array.from({ length: count }).map((_, i) => (
-      <Skeleton key={i} className="h-12 w-full" />
-    ))}
-  </div>
-);
-
-const EmptyState = ({ title }: { title: string }) => (
-  <div className="py-8 text-center text-muted-foreground">
-    <p>{title}</p>
-  </div>
-);
-
-// ────────────────────────────────────────────────────────────
-//  Utils
-// ────────────────────────────────────────────────────────────
-const convertToOcrStatus = (
-  status: string
-): "pending" | "processing" | "completed" | "failed" =>
-  ["pending", "processing", "completed", "failed"].includes(status)
-    ? (status as any)
-    : "pending";
-
-// Component that kicks the OpenAI clean-stream on mount
-function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
-  useKickClean({ pageId: page.pageId, src: "gemini" });
-  useKickClean({ pageId: page.pageId, src: "replicate" });
-
-  return (
-    <>
-      {/* Gemini OCR */}
-      <div>
-        <h4 className="mb-2 text-right text-sm font-medium text-blue-600">
-          نموذج جيميني
-        </h4>
-        <StreamedTextBox pageId={page.pageId} src="gemini" />
-      </div>
-
-      {/* Replicate OCR */}
-      <div>
-        <h4 className="mb-2 text-right text-sm font-medium text-purple-600">
-          نموذج ريبليكيت
-        </h4>
-        <StreamedTextBox pageId={page.pageId} src="replicate" />
-      </div>
-    </>
-  );
-}
-
-// ────────────────────────────────────────────────────────────
-//  MAIN COMPONENT
-// ────────────────────────────────────────────────────────────
-export function PageAccordion({
-  pages,
-  defaultOpen = null,
-  className,
-}: PageAccordionProps) {
-  const { page: currentPage, setPage } = usePdfPage();
-
-  // Keep track of which accordion rows are open
-  const [openItems, setOpenItems] = useState<string[]>(() => {
-    if (defaultOpen) return [defaultOpen.toString()];
-    return pages?.map((p) => p.pageNumber.toString()) ?? [];
-  });
-
-  // Once `pages` arrive, open everything (only once)
-  useEffect(() => {
-    if (!defaultOpen && pages?.length && openItems.length === 0) {
-      setOpenItems(pages.map((p) => p.pageNumber.toString()));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages]);
-
-  // Auto-expand the row that matches the PDF-viewer page
-  useEffect(() => {
-    if (!currentPage) return;
-    const id = currentPage.toString();
-
-    if (!openItems.includes(id)) {
-      setOpenItems((prev) => [...prev, id]);
-    }
-
-    // Smooth-scroll to the row
-    setTimeout(() => {
-      document
-        .querySelector(`[data-page="${currentPage}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 100);
-  }, [currentPage, openItems]);
-
-  // ─── Loading & Empty states ───────────────────────────────
-  if (!pages) return <AccordionSkeleton count={4} />;
-  if (pages.length === 0) return <EmptyState title="لا توجد صفحات" />;
-
-  // ─── UI ───────────────────────────────────────────────────
-  return (
-    <div
-      dir="rtl"
-      className={cn(
-        "col-start-2 row-start-1 h-full overflow-y-auto p-4",
-        "prose max-w-none text-xl leading-8", // large, readable text
-        className
-      )}
-    >
-      <Accordion
-        type="multiple"
-        collapsible
-        value={openItems}
-        onValueChange={(v) => setOpenItems(Array.isArray(v) ? v : v ? [v] : [])}
-      >
-        {pages.map((page) => (
-          <AccordionItem
-            key={page.pageId}
-            value={page.pageNumber.toString()}
-            data-page={page.pageNumber}
-          >
-            <AccordionTrigger
-              className="flex items-center justify-between gap-2"
-              onClick={() => setPage(page.pageNumber)}
-            >
-              <span className="text-right text-2xl text-white">
-                صفحة {page.pageNumber}
-              </span>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-blue-600">Gemini</span>
-                  <OcrStepperMini
-                    provider="gemini"
-                    status={convertToOcrStatus(page.geminiStatus)}
-                  />
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-purple-600">Replicate</span>
-                  <OcrStepperMini
-                    provider="replicate"
-                    status={convertToOcrStatus(page.replicateStatus)}
-                  />
-                </div>
-              </div>
-            </AccordionTrigger>
-
-            <AccordionContent className="space-y-6 ">
-              <PageContentWithKicks page={page} />
-            </AccordionContent>
-          </AccordionItem>
-        ))}
-      </Accordion>
-    </div>
-  );
-}
-
-
-
-// File Path: src/components/PDFDropzone.tsx
-
-"use client";
-
-import { useCallback, useRef, useState } from "react";
-import { useDropzone } from 'react-dropzone';
-import { countPdfPages } from "@/utils/pdfUtils";
-
-interface PDFDropzoneProps {
-  selectedPDF: File | null;
-  setSelectedPDF: (file: File | null) => void;
-  pageCount: number | null;
-  setPageCount: (count: number | null) => void;
-  isLoading: boolean;
-  setIsLoading: (isLoading: boolean) => void;
-}
-
-export default function PDFDropzone({
-  selectedPDF,
-  setSelectedPDF,
-  pageCount,
-  setPageCount,
-  isLoading,
-  setIsLoading
-}: PDFDropzoneProps) {
-  const PDFInput = useRef<HTMLInputElement>(null);
-  const [dropzoneError, setDropzoneError] = useState<string | null>(null);
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedPDF(file);
-      try {
-        const count = await countPdfPages(file, setIsLoading);
-        setPageCount(count);
-      } catch (error) {
-        console.error("Error counting pages:", error);
-        setPageCount(0);
-      }
-    }
-  };
-
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    setDropzoneError(null);
-    if (acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-      if (file.type !== 'application/pdf') {
-        setDropzoneError('Only PDF files are allowed');
-        return;
-      }
-      
-      setSelectedPDF(file);
-      try {
-        const count = await countPdfPages(file, setIsLoading);
-        setPageCount(count);
-        if (PDFInput.current) {
-          // Create a DataTransfer object to set the files
-          const dataTransfer = new DataTransfer();
-          dataTransfer.items.add(file);
-          PDFInput.current.files = dataTransfer.files;
-        }
-      } catch (error) {
-        console.error("Error counting pages:", error);
-        setPageCount(0);
-      }
-    }
-  }, [setSelectedPDF, setPageCount, setIsLoading]);
-
-  const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
-    onDrop,
-    accept: {
-      'application/pdf': ['.pdf']
-    },
-    maxFiles: 1,
-    multiple: false
-  });
-
-  return (
-    <div 
-      {...getRootProps()} 
-      className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-        ${isDragActive ? 'border-blue-400 bg-blue-400/10' : 'border-white/30 hover:border-white/50'}
-        ${isDragReject ? 'border-red-400 bg-red-400/10' : ''}
-        ${selectedPDF ? 'bg-green-400/10 border-green-400' : ''}
-      `}
-    >
-      <input {...getInputProps()} />
-      <input
-        type="file"
-        accept="application/pdf"
-        ref={PDFInput}
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-      
-      <div className="flex flex-col items-center justify-center space-y-2">
-        <svg 
-          className={`w-12 h-12 mb-3 ${selectedPDF ? 'text-green-400' : 'text-white/70'}`} 
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24" 
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            strokeWidth="2" 
-            d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-          />
-        </svg>
-        
-        {selectedPDF ? (
-          <div>
-            <p className="text-sm font-medium text-green-400">
-              Selected: {selectedPDF.name}
-            </p>
-            {pageCount !== null && (
-              <p className="text-xs text-white/70 mt-1">({pageCount} pages)</p>
-            )}
-          </div>
-        ) : (
-          <div>
-            <p className="font-medium text-white">
-              {isDragActive ? 'Drop the PDF here' : 'Drag & drop a PDF file here'}
-            </p>
-            <p className="text-xs text-white/70 mt-1">
-              or click to select a file
-            </p>
-            <p className="text-xs font-medium text-white/70 mt-2">
-              Only PDF files are accepted
-            </p>
-          </div>
-        )}
-        
-        {isLoading && (
-          <div className="mt-2 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            <span className="ml-2 text-sm text-white/80">يتم رفع الملف...</span>
-          </div>
-        )}
-        
-        {dropzoneError && (
-          <p className="text-sm font-medium text-red-400 mt-2">{dropzoneError}</p>
-        )}
-      </div>
-    </div>
-  );
-} 
-
-
-// File Path: src/components/pdfProvider.tsx
-
-
-
-
-// File Path: src/components/ProgressBarOverall.tsx
-
-// src/components/ProgressBarOverall.tsx
-"use client";
-
-import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { Id } from "../../convex/_generated/dataModel";
-import { usePageStream } from "@/store/pageStreams";
-
-interface ProgressBarOverallProps {
-  pdfId: Id<"pdfs">;
-}
-
-export default function ProgressBarOverall({ pdfId }: ProgressBarOverallProps) {
-  const pages = useQuery(api.pdf.queries.getPagesByPdf, { pdfId });
-  const { chunks } = usePageStream();
-
-  if (!pages) return null;
-
-  // Count pages with any cleaned content in the store
-  const totalPages = pages.length;
-  const completedPages = pages.filter((page) => {
-    const geminiKey = `${page.pageId}_gemini`;
-    const replicateKey = `${page.pageId}_replicate`;
-    return chunks[geminiKey]?.length > 0 || chunks[replicateKey]?.length > 0;
-  }).length;
-
-  const progress = totalPages > 0 ? (completedPages / totalPages) * 100 : 0;
-
-  return (
-    <div className="fixed top-4 right-4 w-64 bg-emerald-950/80 backdrop-blur-md rounded-lg border border-emerald-800/30 p-3 z-50">
-      <div className="flex justify-between text-xs text-white/80 mb-1">
-        <span>معالجة الصفحات</span>
-        <span>
-          {completedPages} / {totalPages}
-        </span>
-      </div>
-      <div className="w-full bg-emerald-900/30 rounded-full h-2">
-        <div
-          className="bg-emerald-400 h-2 rounded-full transition-all duration-300"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-
-
-// File Path: src/components/QRCodePopup.tsx
-
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { X } from 'lucide-react';
-
-interface QRCodePopupProps {
-  onClose: () => void;
-}
-
-export default function QRCodePopup({ onClose }: QRCodePopupProps) {
-  const [isClosing, setIsClosing] = useState(false);
-
-  // Handle QR popup closing animation
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 500); // Match animation duration
-  };
-
-  // Close on escape key
-  useEffect(() => {
-    const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleEscKey);
-    return () => window.removeEventListener('keydown', handleEscKey);
-  }, []);
-
-  return (
-    <div 
-      className={`hidden lg:block fixed bottom-6 left-6 bg-white/10 backdrop-blur-md shadow-lg rounded-xl p-4 border border-white/20 ${
-        isClosing ? 'animate-slide-out-left' : 'animate-slide-in-left'
-      }`}
-    >
-      <button 
-        className="absolute top-1 right-1 text-white/80 hover:text-white" 
-        onClick={handleClose}
-        aria-label="Close QR code popup"
-      >
-        <X size={20} />
-      </button>
-      <div className="text-white text-sm mb-2 text-center pt-2">امسح الرمز للوصول للتطبيق</div>
-      <div className="w-32 h-32 relative">
-        <Image 
-          src="/qr-code.png" 
-          alt="QR Code"
-          fill
-          className="object-contain ml-2"
-        />
-      </div>
-    </div>
-  );
-} 
-
-
-// File Path: src/components/ui/accordion.tsx
-
-"use client";
-
-import * as React from "react";
-import * as AccordionPrimitive from "@radix-ui/react-accordion";
-import { ChevronDownIcon } from "lucide-react";
-
-import { cn } from "@/lib/utils";
-
-function Accordion({
-  ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Root>) {
-  return <AccordionPrimitive.Root data-slot="accordion" {...props} />;
-}
-
-function AccordionItem({
-  className,
-  ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Item>) {
-  return (
-    <AccordionPrimitive.Item
-      data-slot="accordion-item"
-      className={cn("border-b last:border-b-0", className)}
-      {...props}
-    />
-  );
-}
-
-function AccordionTrigger({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Trigger>) {
-  return (
-    <AccordionPrimitive.Header className="flex">
-      <AccordionPrimitive.Trigger
-        data-slot="accordion-trigger"
-        className={cn(
-          "focus-visible:border-ring focus-visible:ring-ring/50 flex flex-1 items-start justify-between gap-4 rounded-md py-4 text-left text-sm font-medium transition-all outline-none hover:underline focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&[data-state=open]>svg]:rotate-180",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        <ChevronDownIcon className="text-muted-foreground pointer-events-none size-4 shrink-0 translate-y-0.5 transition-transform duration-200" />
-      </AccordionPrimitive.Trigger>
-    </AccordionPrimitive.Header>
-  );
-}
-
-function AccordionContent({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof AccordionPrimitive.Content>) {
-  return (
-    <AccordionPrimitive.Content
-      data-slot="accordion-content"
-      className="data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down overflow-hidden text-sm"
-      {...props}
-    >
-      <div className={cn("pt-0 pb-4", className)}>{children}</div>
-    </AccordionPrimitive.Content>
-  );
-}
-
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent };
-
-
-
-// File Path: src/components/ui/alert-dialog.tsx
-
-"use client"
-
-import * as React from "react"
-import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
-
-import { cn } from "@/lib/utils"
-import { buttonVariants } from "@/components/ui/button"
-
-function AlertDialog({
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
-}
-
-function AlertDialogTrigger({
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
-  return (
-    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
-  )
-}
-
-function AlertDialogPortal({
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
-  return (
-    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
-  )
-}
-
-function AlertDialogOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
-  return (
-    <AlertDialogPrimitive.Overlay
-      data-slot="alert-dialog-overlay"
-      className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function AlertDialogContent({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
-  return (
-    <AlertDialogPortal>
-      <AlertDialogOverlay />
-      <AlertDialogPrimitive.Content
-        data-slot="alert-dialog-content"
-        className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
-          className
-        )}
-        {...props}
-      />
-    </AlertDialogPortal>
-  )
-}
-
-function AlertDialogHeader({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
-      {...props}
-    />
-  )
-}
-
-function AlertDialogFooter({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-dialog-footer"
-      className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function AlertDialogTitle({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
-  return (
-    <AlertDialogPrimitive.Title
-      data-slot="alert-dialog-title"
-      className={cn("text-lg font-semibold", className)}
-      {...props}
-    />
-  )
-}
-
-function AlertDialogDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
-  return (
-    <AlertDialogPrimitive.Description
-      data-slot="alert-dialog-description"
-      className={cn("text-muted-foreground text-sm", className)}
-      {...props}
-    />
-  )
-}
-
-function AlertDialogAction({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
-  return (
-    <AlertDialogPrimitive.Action
-      className={cn(buttonVariants(), className)}
-      {...props}
-    />
-  )
-}
-
-function AlertDialogCancel({
-  className,
-  ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
-  return (
-    <AlertDialogPrimitive.Cancel
-      className={cn(buttonVariants({ variant: "outline" }), className)}
-      {...props}
-    />
-  )
-}
-
-export {
-  AlertDialog,
-  AlertDialogPortal,
-  AlertDialogOverlay,
-  AlertDialogTrigger,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-}
-
-
-
-// File Path: src/components/ui/alert.tsx
-
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
-
-const alertVariants = cva(
-  "relative w-full rounded-lg border px-4 py-3 text-sm grid has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] grid-cols-[0_1fr] has-[>svg]:gap-x-3 gap-y-0.5 items-start [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current",
-  {
-    variants: {
-      variant: {
-        default: "bg-card text-card-foreground",
-        destructive:
-          "text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
-
-function Alert({
-  className,
-  variant,
-  ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
-  return (
-    <div
-      data-slot="alert"
-      role="alert"
-      className={cn(alertVariants({ variant }), className)}
-      {...props}
-    />
-  )
-}
-
-function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-title"
-      className={cn(
-        "col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function AlertDescription({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-description"
-      className={cn(
-        "text-muted-foreground col-start-2 grid justify-items-start gap-1 text-sm [&_p]:leading-relaxed",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-export { Alert, AlertTitle, AlertDescription }
-
-
-
-// File Path: src/components/ui/badge.tsx
-
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
-
-const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
-  {
-    variants: {
-      variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
-        destructive:
-          "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-        outline:
-          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
-
-function Badge({
-  className,
-  variant,
-  asChild = false,
-  ...props
-}: React.ComponentProps<"span"> &
-  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "span"
-
-  return (
-    <Comp
-      data-slot="badge"
-      className={cn(badgeVariants({ variant }), className)}
-      {...props}
-    />
-  )
-}
-
-export { Badge, badgeVariants }
-
-
-
-// File Path: src/components/ui/button.tsx
-
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
-
-const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
-  {
-    variants: {
-      variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-        outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
-        secondary:
-          "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
-        ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-9",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
-
-function Button({
-  className,
-  variant,
-  size,
-  asChild = false,
-  ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
-  const Comp = asChild ? Slot : "button"
-
-  return (
-    <Comp
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
-}
-
-export { Button, buttonVariants }
-
-
-
-// File Path: src/components/ui/skeleton.tsx
-
-import { cn } from "@/lib/utils"
-
-function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="skeleton"
-      className={cn("bg-accent animate-pulse rounded-md", className)}
-      {...props}
-    />
-  )
-}
-
-export { Skeleton }
-
-
-
-// File Path: src/components/ui/text-generate-effect.tsx
-
-"use client";
-import { useEffect } from "react";
-import { motion, stagger, useAnimate } from "motion/react";
-import { cn } from "@/lib/utils";
-
-export const TextGenerateEffect = ({
-  words,
-  className,
-  filter = true,
-  duration = 0.5,
-}: {
-  words: string;
-  className?: string;
-  filter?: boolean;
-  duration?: number;
-}) => {
-  const [scope, animate] = useAnimate();
-  const wordsArray = words.split(" ");
-  useEffect(() => {
-    animate(
-      "span",
-      {
-        opacity: 1,
-        filter: filter ? "blur(0px)" : "none",
-      },
-      {
-        duration: duration ? duration : 1,
-        delay: stagger(0.2),
-      }
-    );
-  }, [scope.current, animate, duration, filter]);
-
-  const renderWords = () => {
-    return (
-      <motion.div ref={scope}>
-        {wordsArray.map((word, idx) => {
-          return (
-            <motion.span
-              key={word + idx}
-              className="dark:text-white text-white text-4xl text-center opacity-0 mb-10"
-              style={{
-                filter: filter ? "blur(10px)" : "none",
-              }}
-            >
-              {word}{" "}
-            </motion.span>
-          );
-        })}
-      </motion.div>
-    );
-  };
-
-  return (
-    <div className={cn("font-bold", className)}>
-      <div className="mt-4">
-        <div className=" dark:text-white text-white text-2xl leading-snug tracking-wide text-center mb-10">
-          {renderWords()}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-
-// File Path: src/components/ui/textarea.tsx
-
-import * as React from "react"
-
-import { cn } from "@/lib/utils"
-
-function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
-  return (
-    <textarea
-      data-slot="textarea"
-      className={cn(
-        "border-input placeholder focus-visible:border-ring focus-visible:ring-ring/100 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 flex field-sizing-content min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-export { Textarea }
-
-
-
-// File Path: src/components/ui/toggle.tsx
-
-"use client"
-
-import * as React from "react"
-import * as TogglePrimitive from "@radix-ui/react-toggle"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
-
-const toggleVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium hover:bg-muted hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-50 data-[state=on]:bg-accent data-[state=on]:text-accent-foreground [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] outline-none transition-[color,box-shadow] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive whitespace-nowrap",
-  {
-    variants: {
-      variant: {
-        default: "bg-transparent",
-        outline:
-          "border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground",
-      },
-      size: {
-        default: "h-9 px-2 min-w-9",
-        sm: "h-8 px-1.5 min-w-8",
-        lg: "h-10 px-2.5 min-w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
-
-function Toggle({
-  className,
-  variant,
-  size,
-  ...props
-}: React.ComponentProps<typeof TogglePrimitive.Root> &
-  VariantProps<typeof toggleVariants>) {
-  return (
-    <TogglePrimitive.Root
-      data-slot="toggle"
-      className={cn(toggleVariants({ variant, size, className }))}
-      {...props}
-    />
-  )
-}
-
-export { Toggle, toggleVariants }
-
-
-
-// File Path: src/components/ui/tooltip.tsx
-
-"use client"
-
-import * as React from "react"
-import * as TooltipPrimitive from "@radix-ui/react-tooltip"
-
-import { cn } from "@/lib/utils"
-
-function TooltipProvider({
-  delayDuration = 0,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
-  )
-}
-
-function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return (
-    <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
-    </TooltipProvider>
-  )
-}
-
-function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
-}
-
-function TooltipContent({
-  className,
-  sideOffset = 0,
-  children,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
-  return (
-    <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
-        sideOffset={sideOffset}
-        className={cn(
-          "bg-primary text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        <TooltipPrimitive.Arrow className="bg-primary fill-primary z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
-      </TooltipPrimitive.Content>
-    </TooltipPrimitive.Portal>
-  )
-}
-
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
-
-
-
-// File Path: src/components/UploadButton.tsx
-
-"use client";
-
-import { useState } from "react";
-import ConfirmationModal from "./ConfirmationModal";
-
-interface UploadButtonProps {
-  selectedPDF: File | null;
-  isLoading: boolean;
-  onSubmit?: () => void;
-}
-
-export default function UploadButton({ 
-  selectedPDF, 
-  isLoading, 
-  onSubmit 
-}: UploadButtonProps) {
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (selectedPDF && !isLoading) {
-      setShowConfirmModal(true);
-    }
-  };
-  
-  const handleConfirm = () => {
-    setShowConfirmModal(false);
-    if (onSubmit) {
-      onSubmit();
-    }
-  };
-  
-  const handleCancel = () => {
-    setShowConfirmModal(false);
-  };
-  
-  return (
-    <>
-      <button
-        type="button"
-        className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-lg hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed w-full transition-colors border border-white/30 mt-7"
-        disabled={selectedPDF === null || isLoading}
-        onClick={handleClick}
-      >
-        {isLoading ? 'يتم التحميل...' : 'ارفع الملف'}
-      </button>
-      
-      <ConfirmationModal
-        isOpen={showConfirmModal}
-        title="تحذير"
-        message="أتعهد بعدم رفع أو مشاركة أي ملفات قد تحتوي على معلومات سريه وقد تعرض هذه الوزارة لأضرارا كبيرة"
-        onConfirm={handleConfirm}
-        onCancel={handleCancel}
-      />
-    </>
-  );
-} 
-
-
-// File Path: src/lib/ocrColors.ts
-
-// lib/ocrColors.ts
-type OcrStatus = "pending" | "processing" | "completed" | "failed";
-
-export function getStatusColor(status: OcrStatus): string {
-  const statusColors = {
-    pending: "bg-muted/30", // gray 300
-    processing: "bg-yellow-400/80",
-    completed: "bg-emerald-500/90",
-    failed: "bg-destructive", // rose-600
-  };
-  
-  return statusColors[status] || statusColors.pending;
-}
-
-
-// File Path: src/lib/utils.ts
-
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
-
-
-// File Path: src/services/pdfService.ts
-
-/**
- * Upload a PDF file using the provided mutation functions
- */
-export const uploadPDF = async (
-  file: File,
-  pageCount: number,
-  generateUploadUrl: () => Promise<string>,
-  sendPDF: (args: { fileId: string, filename: string, fileSize: number, pageCount: number }) => Promise<string>,
-  processWithMultipleOcrMutation: (args: { pdfId: string }) => Promise<void>
-) => {
-  // Step 1: Get a short-lived upload URL
-  const postUrl = await generateUploadUrl();
-  
-  // Step 2: POST the file to the URL
-  const result = await fetch(postUrl, {
-    method: "POST",
-    headers: { "Content-Type": file.type },
-    body: file,
-  });
-  
-  const { storageId } = await result.json();
-  
-  // Step 3: Save the newly allocated storage id and page count to the database
-  const pdfId = await sendPDF({ 
-    fileId: storageId, 
-    filename: file.name, 
-    fileSize: file.size,
-    pageCount: pageCount || 0
-  });
-
-  // Step 4: Process the PDF with OCR
-  await processWithMultipleOcrMutation({ pdfId: pdfId });
-
-  return pdfId;
-}; 
-
-
-// File Path: src/store/pageStreams.ts
-
-// src/store/pageStreams.ts
-import { create } from "zustand";
-import { Id } from "../../convex/_generated/dataModel";
-
-type PageStreamKey = `${Id<"pages">}_${"gemini" | "replicate"}`;
-type InFlightKey = `${Id<"pages">}_${"gemini" | "replicate"}`;
-
-interface PageStreamState {
-  chunks: Record<PageStreamKey, string>;
-  inFlight: Set<InFlightKey>;
-  setChunk: (key: PageStreamKey, txt: string) => void;
-  markInFlight: (key: InFlightKey) => void;
-  clearInFlight: (key: InFlightKey) => void;
-}
-
-export const usePageStream = create<PageStreamState>((set) => ({
-  chunks: {},
-  inFlight: new Set(),
-  setChunk: (key, txt) =>
-    set((state) => ({ chunks: { ...state.chunks, [key]: txt } })),
-  markInFlight: (key) =>
-    set((state) => ({ inFlight: new Set([...state.inFlight, key]) })),
-  clearInFlight: (key) =>
-    set((state) => {
-      const newSet = new Set(state.inFlight);
-      newSet.delete(key);
-      return { inFlight: newSet };
-    }),
-}));
-
-// Handy selector for getting text by pageId and source
-export const selectChunk = (pageId: Id<"pages">, src: "gemini" | "replicate") =>
-  (state: PageStreamState) => state.chunks[`${pageId}_${src}`] ?? "";
-
-
-// File Path: src/utils/pdfUtils.ts
-
-/**
- * Count the number of pages in a PDF file using regex
- */
-export const countPdfPages = (
-  file: File,
-  setIsLoading: (isLoading: boolean) => void
-): Promise<number> => {
-  return new Promise((resolve) => {
-    setIsLoading(true);
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result as ArrayBuffer;
-        const bytes = new Uint8Array(content);
-        let text = "";
-        
-        // Convert binary data to string
-        for (let i = 0; i < bytes.length; i++) {
-          text += String.fromCharCode(bytes[i]);
-        }
-        
-        // Use regex to find page count patterns
-        const pageCountRegex = /\/Count\s+(\d+)/;
-        const match = text.match(pageCountRegex);
-        setIsLoading(false);
-        if (match && match[1]) {
-          const count = parseInt(match[1], 10);
-          resolve(count);
-        } else {
-          console.warn("Could not determine page count, defaulting to 1 page");
-          resolve(1);
-        }
-      } catch (error) {
-        setIsLoading(false);
-        console.error("Error counting PDF pages:", error);
-        resolve(1);
-      }
-    };
-    
-    reader.onerror = (error) => {
-      setIsLoading(false);
-      console.error("Error reading PDF file:", error);
-      resolve(1);
-    };
-    
-    reader.readAsArrayBuffer(file);
-  });
-}; 
-
-
-// File Path: tailwind.config.ts
-
-import type { Config } from 'tailwindcss'
-import typography from '@tailwindcss/typography'
-
-const config: Config = {
-  future: {
-    // Disable the Oxide compiler to avoid native binding issues
-    unstable_oxide: false
-  },
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
-  theme: {
-    extend: {
-      colors: {
-        // Define your custom colors here
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
-        card: 'var(--card)',
-        'card-foreground': 'var(--card-foreground)',
-        popover: 'var(--popover)',
-        'popover-foreground': 'var(--popover-foreground)',
-        primary: 'var(--primary)',
-        'primary-foreground': 'var(--primary-foreground)',
-        secondary: 'var(--secondary)',
-        'secondary-foreground': 'var(--secondary-foreground)',
-        muted: 'var(--muted)',
-        'muted-foreground': 'var(--muted-foreground)',
-        accent: 'var(--accent)',
-        'accent-foreground': 'var(--accent-foreground)',
-        destructive: 'var(--destructive)',
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
-      },
-      fontFamily: {
-        sans: ['var(--font-ibm-plex-sans-arabic)'],
-        mono: ['var(--font-geist-mono)'],
-      },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
-        xl: 'calc(var(--radius) + 4px)',
-      },
-    },
-  },
-  plugins: [
-    typography,
-  ],
-}
-
-export default config
-
-
-// File Path: tsconfig.json
-
-{
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
-}
-
 

@@ -1,3 +1,4 @@
+/* src/app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -88,6 +89,55 @@ html, body {
   body {
     @apply bg-background text-foreground;
     font-family: 'IBM Plex Sans Arabic', sans-serif;
+  }
+}
+
+/* Custom Scrollbar Styles */
+@layer utilities {
+  /* Webkit browsers (Chrome, Safari, Edge) */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-emerald-950/30 backdrop-blur-sm rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-emerald-500/60 rounded-full transition-colors duration-200;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-emerald-500/80;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    @apply bg-emerald-500;
+  }
+
+  /* Firefox */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(16 185 129 / 0.6) rgb(6 78 59 / 0.3);
+  }
+
+  /* Thin scrollbar variant */
+  .custom-scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .custom-scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-emerald-500/40 rounded-full;
+  }
+
+  .custom-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-emerald-500/60;
   }
 }
 

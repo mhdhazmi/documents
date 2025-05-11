@@ -1,7 +1,7 @@
 // src/components/pageAccordion.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   Accordion,
@@ -35,8 +35,8 @@ function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <h4 className="mb-2 text-right text-sm font-medium text-blue-400">
-          نموذج جيميني (مغلق المصدر)
+        <h4 className="mb-2 text-right text-sm font-medium text-yellow-400/50">
+          مغلق المصدر
         </h4>
         <StreamedTextBox pageId={page.pageId} src="gemini" />
       </motion.div>
@@ -46,8 +46,8 @@ function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <h4 className="mb-2 text-right text-sm font-medium text-purple-400">
-          نموذج ريبليكيت (مفتوح المصدر)
+        <h4 className="mb-2 text-right text-sm font-medium text-yellow-400/50">
+          مفتوح المصدر
         </h4>
         <StreamedTextBox pageId={page.pageId} src="replicate" />
       </motion.div>
@@ -63,31 +63,50 @@ export function PageAccordion({
   const { page: currentPage, setPage } = usePdfPage();
   const [openItems, setOpenItems] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const scrollTimeout = useRef<NodeJS.Timeout>();
+  const isAutoScrolling = useRef(false);
 
   // Keep track of which accordion rows are open
   useEffect(() => {
-    if (pages?.length) {
-      // Start with all items open for better UX
-      setOpenItems(pages.map((p) => p.pageNumber.toString()));
+    if (pages?.length && defaultOpen !== null) {
+      // If defaultOpen is specified, only open that item
+      setOpenItems([defaultOpen.toString()]);
+    } else if (currentPage) {
+      // Start with only the current page open
+      setOpenItems([currentPage.toString()]);
     }
-  }, [pages]);
+  }, [pages, defaultOpen, currentPage]);
 
-  // Auto-expand the row that matches the PDF-viewer page
+  // Only auto-scroll when the page changes programmatically (not by accordion click)
   useEffect(() => {
-    if (!currentPage) return;
+    if (!currentPage || isAutoScrolling.current) return;
+
     const id = currentPage.toString();
 
+    // Always ensure current page is open
     if (!openItems.includes(id)) {
       setOpenItems((prev) => [...prev, id]);
     }
 
-    // Smooth-scroll to the row
-    setTimeout(() => {
-      document
-        .querySelector(`[data-page="${currentPage}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Auto-scroll to current page only once after page changes
+    clearTimeout(scrollTimeout.current);
+    scrollTimeout.current = setTimeout(() => {
+      isAutoScrolling.current = true;
+      const element = document.querySelector(`[data-page="${currentPage}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      // Reset auto-scrolling flag after animation
+      setTimeout(() => {
+        isAutoScrolling.current = false;
+      }, 500);
     }, 100);
-  }, [currentPage, openItems]);
+
+    return () => {
+      clearTimeout(scrollTimeout.current);
+    };
+  }, [currentPage]); // Only depend on currentPage, not openItems
 
   // Filter pages based on search
   const filteredPages = pages?.filter(
@@ -121,13 +140,28 @@ export function PageAccordion({
       ? (status as any)
       : "pending";
 
+  // Simplified value change handler
+  const handleValueChange = (values: string[]) => {
+    setOpenItems(values);
+  };
+
+  // Handle clicking on page number
+  const handlePageClick = (pageNumber: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setPage(pageNumber);
+  };
+
   return (
     <div
       dir="rtl"
-      className={cn("h-full overflow-y-auto space-y-3", className)}
+      className={cn(
+        "h-full overflow-y-auto space-y-3 custom-scrollbar",
+        className
+      )}
     >
       {/* Search Bar */}
-      <div className="sticky top-0 z-10 bg-emerald-950/80 backdrop-blur-md rounded-lg p-3 mb-2">
+      <div className="bg-emerald-950/80 backdrop-blur-md rounded-lg p-3 mb-2">
         <input
           type="text"
           placeholder="بحث في الصفحات..."
@@ -140,7 +174,7 @@ export function PageAccordion({
       <Accordion
         type="multiple"
         value={openItems}
-        onValueChange={(v) => setOpenItems(Array.isArray(v) ? v : v ? [v] : [])}
+        onValueChange={handleValueChange}
         className="space-y-2"
       >
         {filteredPages.map((page) => (
@@ -148,16 +182,15 @@ export function PageAccordion({
             key={page.pageId}
             value={page.pageNumber.toString()}
             data-page={page.pageNumber}
-            className="bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden"
+            className="backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden"
           >
-            <AccordionTrigger
-              className="flex items-center justify-between gap-3 p-4 hover:bg-white/10 transition-colors"
-              onClick={() => setPage(page.pageNumber)}
-            >
+            <AccordionTrigger className="flex items-center justify-between gap-3 p-4 hover:bg-white/10 transition-colors">
               <div className="flex items-center gap-3">
+                {/* Use a span with onClick instead of nested button */}
                 <span
+                  onClick={(e) => handlePageClick(page.pageNumber, e)}
                   className={cn(
-                    "text-lg font-medium transition-colors",
+                    "text-lg font-medium transition-colors cursor-pointer hover:text-emerald-300",
                     currentPage === page.pageNumber
                       ? "text-emerald-400"
                       : "text-white"
@@ -168,18 +201,13 @@ export function PageAccordion({
                 {currentPage === page.pageNumber && (
                   <span className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" />
                 )}
-              </div>
 
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-blue-400">جيميني</span>
+                {/* Status Indicators - Gemini (first) and Replicate (second) */}
+                <div className="flex items-center gap-1.5">
                   <OcrStepperMini
                     provider="gemini"
                     status={convertToOcrStatus(page.geminiStatus)}
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-purple-400">ريبليكيت</span>
                   <OcrStepperMini
                     provider="replicate"
                     status={convertToOcrStatus(page.replicateStatus)}

@@ -11,7 +11,8 @@ import ProgressBarOverall from "@/components/ProgressBarOverall";
 import { usePdfPage } from "@/app/pdf/pages/context";
 import { useRef, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { ChevronLeft, ChevronRight, ZoomIn, Maximize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PagesView() {
   const params = useParams();
@@ -19,7 +20,6 @@ export default function PagesView() {
   const { page, setPage } = usePdfPage();
   const viewerRef = useRef<PDFViewerHandle>(null);
   const [isAccordionCollapsed, setIsAccordionCollapsed] = useState(false);
-  const [pdfFitMode, setPdfFitMode] = useState<"fit" | "zoom">("fit");
 
   // Get PDF data
   const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
@@ -51,11 +51,74 @@ export default function PagesView() {
     ? "w-full"
     : "w-full md:w-[35%] lg:w-[30%]";
 
+  // Show skeleton loading state
   if (!pdf || !pages) {
     return (
-      <div className="flex h-screen items-center justify-center text-white">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
-        <span className="ml-3">جاري التحميل...</span>
+      <div
+        className="h-screen flex flex-col relative overflow-hidden"
+        style={{
+          backgroundImage: 'url("/background.png")',
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }}
+      >
+        {/* Skeleton Progress Bar */}
+        <div className="sticky top-0 z-50 bg-emerald-950/80 backdrop-blur-md border-b border-emerald-800/30 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-6 w-40 bg-white/10" />
+              <Skeleton className="h-4 w-24 bg-white/10" />
+            </div>
+            <Skeleton className="h-8 w-32 bg-white/10" />
+          </div>
+        </div>
+
+        {/* Skeleton Main Content */}
+        <div className="flex-1 flex gap-1 md:gap-2 p-2 md:p-4 overflow-hidden">
+          {/* Skeleton Accordion Section */}
+          <div className="w-full md:w-[65%] lg:w-[70%] relative">
+            <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4 space-y-4">
+              {/* Search bar skeleton */}
+              <Skeleton className="h-10 w-full bg-white/10" />
+
+              {/* Accordion items skeleton */}
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-6 w-32 bg-white/10" />
+                      <Skeleton className="h-4 w-4 bg-white/10 rounded-full" />
+                      <Skeleton className="h-4 w-4 bg-white/10 rounded-full" />
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-20 bg-white/10" />
+                    <Skeleton className="h-24 w-full bg-white/10" />
+                    <Skeleton className="h-4 w-20 bg-white/10" />
+                    <Skeleton className="h-24 w-full bg-white/10" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Skeleton Divider */}
+          <div className="hidden md:block w-px bg-gradient-to-t from-transparent via-emerald-500/50 to-transparent" />
+
+          {/* Skeleton PDF Viewer Section */}
+          <div className="w-full md:w-[35%] lg:w-[30%] relative">
+            <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <Skeleton className="h-96 w-full bg-white/10" />
+                <Skeleton className="h-4 w-24 mx-auto bg-white/10" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -99,7 +162,7 @@ export default function PagesView() {
         >
           <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden">
             {!isAccordionCollapsed && (
-              <div className="h-full overflow-y-auto p-2 md:p-4">
+              <div className="h-full overflow-y-auto p-2 md:p-4 custom-scrollbar">
                 <PageAccordion pages={pages} />
               </div>
             )}
@@ -128,38 +191,12 @@ export default function PagesView() {
           className={`transition-all duration-300 ${pdfWidth} relative`}
         >
           <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden relative">
-            {/* PDF Controls */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
-              <button
-                onClick={() => setPdfFitMode("fit")}
-                className={`p-2 rounded-lg transition-colors ${
-                  pdfFitMode === "fit"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-black/30 text-white/70 hover:text-white"
-                }`}
-                title="احتواء الصفحة"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setPdfFitMode("zoom")}
-                className={`p-2 rounded-lg transition-colors ${
-                  pdfFitMode === "zoom"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-black/30 text-white/70 hover:text-white"
-                }`}
-                title="عرض أصلي"
-              >
-                <ZoomIn className="h-4 w-4" />
-              </button>
-            </div>
-
             <PDFViewer
               ref={viewerRef}
               pdfUrl={fileUrl || null}
               initialPage={1}
               onPageChange={handlePageChange}
-              fitToWidth={pdfFitMode === "fit"}
+              fitToWidth={true} // Always fit to width
               maxScale={2.5}
             />
           </div>
