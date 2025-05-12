@@ -1,18 +1,18 @@
-// next.config.ts
-import type { WebpackConfigContext } from "next/dist/server/config-shared";
+import type { NextConfig } from "next";
+import type { Configuration } from "webpack";
 
-/** @type {import("next").NextConfig} */
-const nextConfig = {
+const nextConfig: NextConfig = {
   experimental: { useLightningcss: false },
-  webpack: (
-    config: WebpackConfigContext["config"],
-    { isServer }: { isServer: boolean }
-  ) => {
-    if (!isServer) {
-      config.resolve.alias.canvas = false; // ← make 'require("canvas")' a no-op
-    }
+
+  webpack(config: Configuration) {
+    // ← only one param
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      canvas: false,
+    };
     return config;
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
