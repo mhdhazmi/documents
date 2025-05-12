@@ -5,12 +5,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { Toggle } from "@/components/ui/toggle";
-import { ChevronRight, FileText, Hash } from "lucide-react";
-import {
-  parseCitations,
-  groupCitationsByFile,
-  CitationSummary,
-} from "@/utils/citationParser";
+import { FileText, Hash } from "lucide-react";
+import { parseCitations, groupCitationsByFile } from "@/utils/citationParser";
 
 interface SourcesProps {
   sessionId: string;
@@ -55,7 +51,7 @@ export default function Sources({
   );
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
-    pdfMeta?.fileId ? { fileId: pdfMeta.fileId } : "skip"
+    pdfMeta?.fileId ? { fileId: pdfMeta.fileId as Id<"_storage"> } : "skip"
   );
 
   // Query messages to extract citations

@@ -126,10 +126,7 @@ export function isValidCitation(citation: string): boolean {
 /**
  * Convert citations to clickable links in HTML/markdown
  */
-export function makeCitationsClickable(
-  text: string,
-  onCitationClick: (filename: string, pageNumber?: number) => void
-): string {
+export function makeCitationsClickable(text: string): string {
   const citations = parseCitations(text);
   let result = text;
 

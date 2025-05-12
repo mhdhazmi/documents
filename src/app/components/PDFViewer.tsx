@@ -7,6 +7,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useState,
+  useCallback,
 } from "react";
 import * as pdfjs from "pdfjs-dist";
 
@@ -44,13 +45,101 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
     const [error, setError] = useState<string | null>(null);
     const [currentFitMode, setCurrentFitMode] = useState(fitToWidth);
 
+    const calculateScale = useCallback(
+      (
+        viewport: pdfjs.PageViewport,
+        containerWidth: number,
+        containerHeight: number
+      ): number => {
+        if (!currentFitMode) return 1.0;
+
+        // Calculate scale to fit both width and height
+        const widthScale = containerWidth / viewport.width;
+        const heightScale = containerHeight / viewport.height;
+
+        // Use the smaller scale to ensure the page fits in both dimensions
+        const scale = Math.min(widthScale, heightScale);
+
+        // Clamp the scale between 0.1 and maxScale
+        return Math.min(Math.max(scale, 0.1), maxScale);
+      },
+      [currentFitMode, maxScale]
+    );
+
+    const renderPage = useCallback(
+      async (pageNumber: number) => {
+        if (
+          !pdfDocumentRef.current ||
+          !containerRef.current ||
+          !canvasContainerRef.current
+        )
+          return;
+
+        try {
+          setIsLoading(true);
+          setError(null);
+
+          const page = await pdfDocumentRef.current.getPage(pageNumber);
+          const container = containerRef.current;
+          const canvasContainer = canvasContainerRef.current;
+
+          // Get the container dimensions
+          const containerWidth = container.clientWidth - 40; // Account for padding
+          const containerHeight = container.clientHeight - 40; // Account for padding
+
+          // Get viewport with default scale first
+          const viewport = page.getViewport({ scale: 1.0 });
+
+          // Calculate appropriate scale to fit
+          const scale = calculateScale(
+            viewport,
+            containerWidth,
+            containerHeight
+          );
+          const scaledViewport = page.getViewport({ scale });
+
+          // Create canvas
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d")!;
+          canvas.height = scaledViewport.height;
+          canvas.width = scaledViewport.width;
+
+          // Clear container and append canvas
+          canvasContainer.innerHTML = "";
+          canvasContainer.appendChild(canvas);
+
+          // Center the canvas in the container
+          canvas.style.display = "block";
+          canvas.style.margin = "0 auto";
+
+          // Render page
+          await page.render({
+            canvasContext: context,
+            viewport: scaledViewport,
+          }).promise;
+
+          // Update current page and notify parent
+          currentPageRef.current = pageNumber;
+          onPageChange?.(pageNumber);
+        } catch (error) {
+          console.error("Error rendering page:", error);
+          setError(
+            `خطأ في عرض الصفحة: ${error instanceof Error ? error.message : String(error)}`
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      [calculateScale, setIsLoading, setError, onPageChange]
+    );
+
     // Update fit mode when prop changes
     useEffect(() => {
       setCurrentFitMode(fitToWidth);
       if (pdfDocumentRef.current) {
         renderPage(currentPageRef.current);
       }
-    }, [fitToWidth]);
+    }, [fitToWidth, renderPage]);
 
     // Expose goToPage method via ref
     useImperativeHandle(ref, () => ({
@@ -60,84 +149,6 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
         }
       },
     }));
-
-    const calculateScale = (
-      viewport: pdfjs.PageViewport,
-      containerWidth: number,
-      containerHeight: number
-    ): number => {
-      if (!currentFitMode) return 1.0;
-
-      // Calculate scale to fit both width and height
-      const widthScale = containerWidth / viewport.width;
-      const heightScale = containerHeight / viewport.height;
-
-      // Use the smaller scale to ensure the page fits in both dimensions
-      const scale = Math.min(widthScale, heightScale);
-
-      // Clamp the scale between 0.1 and maxScale
-      return Math.min(Math.max(scale, 0.1), maxScale);
-    };
-
-    const renderPage = async (pageNumber: number) => {
-      if (
-        !pdfDocumentRef.current ||
-        !containerRef.current ||
-        !canvasContainerRef.current
-      )
-        return;
-
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const page = await pdfDocumentRef.current.getPage(pageNumber);
-        const container = containerRef.current;
-        const canvasContainer = canvasContainerRef.current;
-
-        // Get the container dimensions
-        const containerWidth = container.clientWidth - 40; // Account for padding
-        const containerHeight = container.clientHeight - 40; // Account for padding
-
-        // Get viewport with default scale first
-        const viewport = page.getViewport({ scale: 1.0 });
-
-        // Calculate appropriate scale to fit
-        const scale = calculateScale(viewport, containerWidth, containerHeight);
-        const scaledViewport = page.getViewport({ scale });
-
-        // Create canvas
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d")!;
-        canvas.height = scaledViewport.height;
-        canvas.width = scaledViewport.width;
-
-        // Clear container and append canvas
-        canvasContainer.innerHTML = "";
-        canvasContainer.appendChild(canvas);
-
-        // Center the canvas in the container
-        canvas.style.display = "block";
-        canvas.style.margin = "0 auto";
-
-        // Render page
-        await page.render({
-          canvasContext: context,
-          viewport: scaledViewport,
-        }).promise;
-
-        // Update current page and notify parent
-        currentPageRef.current = pageNumber;
-        onPageChange?.(pageNumber);
-      } catch (error) {
-        console.error("Error rendering page:", error);
-        setError(
-          `خطأ في عرض الصفحة: ${error instanceof Error ? error.message : String(error)}`
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
 
     useEffect(() => {
       if (!pdfUrl) return;
@@ -182,7 +193,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
           pdfDocumentRef.current = null;
         }
       };
-    }, [pdfUrl, initialPage]);
+    }, [pdfUrl, initialPage, renderPage]);
 
     // Handle window resize
     useEffect(() => {
@@ -203,7 +214,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
         window.removeEventListener("resize", debouncedResize);
         clearTimeout(timeoutId);
       };
-    }, []);
+    }, [renderPage]);
 
     // Handle keyboard navigation
     useEffect(() => {
@@ -227,7 +238,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
 
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, []);
+    }, [renderPage]);
 
     if (error) {
       return (

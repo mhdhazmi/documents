@@ -20,8 +20,8 @@ export default function ProgressBarOverall({ pdfId }: ProgressBarOverallProps) {
   // Count pages with any cleaned content in the store
   const totalPages = pages.length;
   const completedPages = pages.filter((page) => {
-    const geminiKey = `${page.pageId}_gemini`;
-    const replicateKey = `${page.pageId}_replicate`;
+    const geminiKey = `${page.pageId}_gemini` as keyof typeof chunks;
+    const replicateKey = `${page.pageId}_replicate` as keyof typeof chunks;
     return chunks[geminiKey]?.length > 0 || chunks[replicateKey]?.length > 0;
   }).length;
 

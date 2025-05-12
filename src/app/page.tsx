@@ -18,7 +18,6 @@ type SendPDFFn = (args: {
   fileSize: number;
   pageCount: number;
 }) => Promise<string>;
-type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
 
 const words = "الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال";
 function TextGenerateEffectDemo() {
@@ -30,9 +29,7 @@ export default function App() {
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const sendPDF = useMutation(api.pdf.mutations.savePdfMetadata);
   // const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
-  const workflowOrchMutation = useMutation(
-    api.workflowOrch.workflowOrchMutation
-  );
+
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);

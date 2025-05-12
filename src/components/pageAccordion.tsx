@@ -63,7 +63,7 @@ export function PageAccordion({
   const { page: currentPage, setPage } = usePdfPage();
   const [openItems, setOpenItems] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const scrollTimeout = useRef<NodeJS.Timeout>();
+  const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
   const isAutoScrolling = useRef(false);
 
   // Keep track of which accordion rows are open
@@ -106,7 +106,7 @@ export function PageAccordion({
     return () => {
       clearTimeout(scrollTimeout.current);
     };
-  }, [currentPage]); // Only depend on currentPage, not openItems
+  }, [currentPage, openItems, setOpenItems]); // Only depend on currentPage, not openItems
 
   // Filter pages based on search
   const filteredPages = pages?.filter(
@@ -137,7 +137,7 @@ export function PageAccordion({
     status: string
   ): "pending" | "processing" | "completed" | "failed" =>
     ["pending", "processing", "completed", "failed"].includes(status)
-      ? (status as any)
+      ? (status as "pending" | "processing" | "completed" | "failed")
       : "pending";
 
   // Simplified value change handler
@@ -146,7 +146,10 @@ export function PageAccordion({
   };
 
   // Handle clicking on page number
-  const handlePageClick = (pageNumber: number, e: React.MouseEvent) => {
+  const handlePageClick = (
+    pageNumber: number,
+    e: React.MouseEvent<HTMLSpanElement>
+  ) => {
     e.stopPropagation();
     e.preventDefault();
     setPage(pageNumber);

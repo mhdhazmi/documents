@@ -12,6 +12,19 @@ import ChatHeader from "../components/ChatHeader";
 import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
+
+interface PDF {
+  _id: Id<"pdfs">;
+  _creationTime: number;
+  processingError?: string;
+  fileId: Id<"_storage">; // Updated to use proper storage ID type
+  filename: string;
+  fileSize: number;
+  pageCount: number;
+  uploadedAt: number;
+  status: string;
+}
 
 // Polyfill for crypto.randomUUID
 const generateUUID = () => {
@@ -35,10 +48,31 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string>("");
   const [selectedFilename, setSelectedFilename] = useState<string>("");
+  const [selectedFileId, setSelectedFileId] = useState<Id<"_storage"> | null>(
+    null
+  ); // Updated type
   const router = useRouter();
 
   // Reference to PDFViewer for page navigation
   const pdfViewerRef = useRef<PDFViewerHandle>(null);
+
+  // Fetch data using Convex queries at the component level
+  const sourcesData = useQuery(api.serve.serve.getRagSources, { sessionId });
+  const pdfIds = sourcesData?.[sourcesData?.length - 1]?.pdfIds ?? [];
+  const pdfsInfo = useQuery(api.pdf.queries.getPdfByIds, { pdfIds }) as
+    | PDF[]
+    | undefined;
+  const fileUrl = useQuery(
+    api.files.queries.getFileDownloadUrl,
+    selectedFileId ? { fileId: selectedFileId } : "skip"
+  );
+
+  // Update PDF URL when fileUrl changes
+  useEffect(() => {
+    if (fileUrl) {
+      setPdfUrl(fileUrl);
+    }
+  }, [fileUrl]);
 
   // Initialize sessionId after component mounts to avoid SSR issues
   useEffect(() => {
@@ -49,39 +83,31 @@ export default function Chat() {
     setSessionId(generateUUID());
     setPdfUrl("");
     setSelectedFilename("");
+    setSelectedFileId(null);
     router.refresh();
   };
 
   // Handle citation clicks
-  const handleCitationClick = async (filename: string, pageNumber?: number) => {
-    // Find the PDF ID by filename
-    const sourcesData = await api.serve.serve.getRagSources({ sessionId });
-    const pdfIds = sourcesData?.[sourcesData.length - 1]?.pdfIds ?? [];
+  const handleCitationClick = (filename: string, pageNumber?: number) => {
+    try {
+      if (!pdfsInfo) return;
 
-    if (pdfIds.length === 0) return;
+      const targetPdf = pdfsInfo.find((pdf) => pdf?.filename === filename);
 
-    // Get all PDFs to find the one with matching filename
-    const pdfsInfo = await api.pdf.queries.getPdfByIds({ pdfIds });
-    const targetPdf = pdfsInfo?.find((pdf) => pdf?.filename === filename);
+      if (!targetPdf) {
+        console.warn(`Could not find PDF with filename: ${filename}`);
+        return;
+      }
 
-    if (!targetPdf) {
-      console.warn(`Could not find PDF with filename: ${filename}`);
-      return;
-    }
-
-    // Get the file URL
-    const fileUrl = await api.files.queries.getFileDownloadUrl({
-      fileId: targetPdf.fileId,
-    });
-
-    if (fileUrl) {
-      setPdfUrl(fileUrl);
+      setSelectedFileId(targetPdf.fileId);
       setSelectedFilename(filename);
 
       // Navigate to the specific page if pageNumber is provided
       if (pageNumber && pdfViewerRef.current) {
         pdfViewerRef.current.goToPage(pageNumber);
       }
+    } catch (error) {
+      console.error("Error handling citation click:", error);
     }
   };
 

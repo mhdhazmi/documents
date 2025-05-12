@@ -25,7 +25,7 @@ export default function PagesView() {
   const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
-    pdf?.fileId ? { fileId: pdf.fileId } : "skip"
+    pdf?.fileId ? { fileId: pdf.fileId as Id<"_storage"> } : "skip"
   );
 
   // Get pages data for accordion

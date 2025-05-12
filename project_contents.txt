@@ -10,9 +10,25 @@
     "convex": {
       "command": "npx",
       "args": ["-y", "convex@latest", "mcp", "start"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["-y", "shadcn@canary", "registry:mcp"],
+      "env": {
+        "REGISTRY_URL": "https://animate-ui.com/r/registry.json"
+      }
     }
   }
-} 
+}
+
 
 
 // File Path: .vscode/settings.json
@@ -507,7 +523,6 @@ export const saveConcatenatedText = internalMutation({
 // convex/concatenate/queries.ts
 import { internalQuery } from "../_generated/server";
 import { v } from "convex/values";
-import { Id } from "../_generated/dataModel";
 
 export const areAllPagesComplete = internalQuery({
   args: {
@@ -520,28 +535,29 @@ export const areAllPagesComplete = internalQuery({
       .query("pages")
       .withIndex("byPdfId", (q) => q.eq("pdfId", args.pdfId))
       .collect();
-    
+
     if (pages.length === 0) {
       return false;
     }
-    
+
     // 2. Check if every page has cleaned results for the specified source
     for (const page of pages) {
       const cleaned = await ctx.db
         .query("openaiCleanedPage")
         .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-        .filter((q) => 
-          q.eq(q.field("source"), args.source) && 
-          q.eq(q.field("cleaningStatus"), "completed")
+        .filter(
+          (q) =>
+            q.eq(q.field("source"), args.source) &&
+            q.eq(q.field("cleaningStatus"), "completed")
         )
         .first();
-      
+
       // If any page doesn't have complete cleaned results, return false
       if (!cleaned) {
         return false;
       }
     }
-    
+
     // All pages have completed cleaned results
     return true;
   },
@@ -558,39 +574,39 @@ export const getConcatenatedText = internalQuery({
       .query("pages")
       .withIndex("byPdfIdAndPageNumber", (q) => q.eq("pdfId", args.pdfId))
       .collect();
-    
+
     if (pages.length === 0) {
       return "";
     }
-    
+
     // 2. Get the cleaned text for each page in order
     const pageTexts: string[] = [];
-    
+
     for (const page of pages) {
       const cleaned = await ctx.db
         .query("openaiCleanedPage")
         .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-        .filter((q) => 
-          q.eq(q.field("source"), args.source) && 
-          q.eq(q.field("cleaningStatus"), "completed")
+        .filter(
+          (q) =>
+            q.eq(q.field("source"), args.source) &&
+            q.eq(q.field("cleaningStatus"), "completed")
         )
         .first();
-      
+
       if (cleaned?.cleanedText) {
         pageTexts.push(
           `--- PAGE ${page.pageNumber} ---\n${cleaned.cleanedText}`
         );
       } else {
-        pageTexts.push(
-          `--- PAGE ${page.pageNumber} ---\n[No text available]`
-        );
+        pageTexts.push(`--- PAGE ${page.pageNumber} ---\n[No text available]`);
       }
     }
-    
+
     // 3. Join all page texts with double newlines
-    return pageTexts.join('\n\n');
+    return pageTexts.join("\n\n");
   },
 });
+
 
 
 // File Path: convex/config.ts
@@ -930,162 +946,505 @@ export default http;
 // File Path: convex/ingest/ingest.ts
 
 import { v } from "convex/values";
-import { action, internalAction, internalMutation, internalQuery } from "../_generated/server";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "../_generated/server";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { asyncMap } from "modern-async";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { openai } from "@ai-sdk/openai";
 import { embedMany } from "ai";
 import { embedding as embeddingConfig } from "../config";
 import { Id } from "../_generated/dataModel";
 
 export const createChunks = internalMutation({
-    args: {
-        pdfId: v.id("pdfs"),
-    },
-    handler: async (ctx, arg) => {
-        const pdf = await ctx.db.get(arg.pdfId);
-        if (!pdf) {
-            throw new Error("PDF not found");
-        }
-        console.log("Creating chunks for PDF:", pdf._id);
-        
-        const geminiTextId = await ctx.db
+  args: {
+    pdfId: v.id("pdfs"),
+  },
+  handler: async (ctx, arg) => {
+    const pdf = await ctx.db.get(arg.pdfId);
+    if (!pdf) {
+      throw new Error("PDF not found");
+    }
+    console.log("Creating chunks for PDF:", pdf._id);
+
+    const existingChunks = await ctx.db
+      .query("chunks")
+      .withIndex("byPdfId", (q) => q.eq("pdfId", arg.pdfId))
+      .first();
+
+    if (existingChunks) {
+      console.log(
+        `Chunks already exist for PDF ${arg.pdfId}, skipping creation`
+      );
+      return;
+    }
+
+    const cleanedPages = await ctx.db
+      .query("openaiCleanedPage")
+      .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+      .collect();
+
+    const pdfPages = new Map<Id<"pages">, string>();
+
+    for (const cleanedPage of cleanedPages) {
+      const page = await ctx.db.get(cleanedPage.pageId);
+      if (page && page.pdfId === arg.pdfId) {
+        pdfPages.set(cleanedPage.pageId, cleanedPage.cleanedText);
+      }
+    }
+
+    console.log(`Found ${pdfPages.size} cleaned pages for PDF ${arg.pdfId}`);
+
+    if (pdfPages.size === 0) {
+      console.log("No cleaned pages found, trying whole-PDF approach...");
+
+      // Fallback to whole-PDF chunks for backward compatibility
+      const pdfTextId = await ctx.db
         .query("openaiOcrResults")
-        .withIndex("by_pdf_id", q => 
-            q.eq("pdfId", arg.pdfId))
+        .withIndex("by_pdf_id", (q) => q.eq("pdfId", arg.pdfId))
+        .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
         .first();
 
-        if (!geminiTextId) {
-            throw new Error("No transcription text found for PDF");
-        }
+      if (!pdfTextId?.cleanedText) {
+        console.log("No cleaned text available for chunking");
+        return;
+      }
 
-        const splitter = RecursiveCharacterTextSplitter.fromLanguage("markdown", {
-            chunkSize: embeddingConfig.chunking.chunkSize,
-            chunkOverlap: embeddingConfig.chunking.chunkOverlap,
-        });
-        const chunks = await splitter.splitText(geminiTextId.cleanedText);
-        await asyncMap(chunks, async (chunk) => {
+      // Create document-level chunks with pageId: null
+      const splitter = RecursiveCharacterTextSplitter.fromLanguage("markdown", {
+        chunkSize: embeddingConfig.chunking.chunkSize,
+        chunkOverlap: embeddingConfig.chunking.chunkOverlap,
+      });
+
+      const chunks = await splitter.splitText(pdfTextId.cleanedText);
+      await asyncMap(chunks, async (chunk) => {
         await ctx.db.insert("chunks", {
-            pdfId: arg.pdfId,
-                text: chunk,
-                embeddingId: null,
-            });
+          pdfId: arg.pdfId,
+          pageId: null, // Document-level chunk
+          text: chunk,
+          embeddingId: null,
+        });
+      });
 
-         });
+      console.log(
+        `Created ${chunks.length} document-level chunks for PDF ${arg.pdfId}`
+      );
+      return;
     }
+
+    // Create page-level chunks
+    const splitter = RecursiveCharacterTextSplitter.fromLanguage("markdown", {
+      chunkSize: embeddingConfig.chunking.chunkSize,
+      chunkOverlap: embeddingConfig.chunking.chunkOverlap,
+    });
+
+    let totalChunks = 0;
+
+    // Process each page
+    for (const [pageId, cleanedText] of pdfPages.entries()) {
+      const chunks = await splitter.splitText(cleanedText);
+
+      await asyncMap(chunks, async (chunk) => {
+        await ctx.db.insert("chunks", {
+          pdfId: arg.pdfId,
+          pageId: pageId, // Page-specific chunk
+          text: chunk,
+          embeddingId: null,
+        });
+      });
+
+      console.log(`Created ${chunks.length} chunks for page ${pageId}`);
+      totalChunks += chunks.length;
+    }
+
+    console.log(
+      `Created ${totalChunks} page-level chunks for PDF ${arg.pdfId}`
+    );
+
+    // Also create document-level chunks as a fallback
+    // This maintains backward compatibility and helps with broad queries
+    console.log("Creating additional document-level chunks...");
+
+    const allPageTexts = Array.from(pdfPages.values()).join("\n\n");
+    const docChunks = await splitter.splitText(allPageTexts);
+
+    await asyncMap(docChunks, async (chunk) => {
+      await ctx.db.insert("chunks", {
+        pdfId: arg.pdfId,
+        pageId: null, // Document-level chunk
+        text: chunk,
+        embeddingId: null,
+      });
+    });
+
+    console.log(
+      `Created ${docChunks.length} document-level chunks for backward compatibility`
+    );
+    console.log(`Total chunks created: ${totalChunks + docChunks.length}`);
+  },
+});
+
+export const getChunkStats = internalQuery({
+  args: {
+    pdfId: v.id("pdfs"),
+  },
+  handler: async (ctx, args) => {
+    const allChunks = await ctx.db
+      .query("chunks")
+      .withIndex("byPdfId", (q) => q.eq("pdfId", args.pdfId))
+      .collect();
+
+    const pageChunks = allChunks.filter((chunk) => chunk.pageId !== null);
+    const docChunks = allChunks.filter((chunk) => chunk.pageId === null);
+    const chunksWithEmbeddings = allChunks.filter(
+      (chunk) => chunk.embeddingId !== null
+    );
+
+    return {
+      total: allChunks.length,
+      pageLevel: pageChunks.length,
+      documentLevel: docChunks.length,
+      withEmbeddings: chunksWithEmbeddings.length,
+      pagesRepresented: new Set(pageChunks.map((c) => c.pageId)).size,
+    };
+  },
 });
 
 export async function embedTexts(texts: string[]) {
-    if (texts.length === 0) return [];
+  if (texts.length === 0) return [];
 
-    const {embeddings} = await embedMany({
-        model: openai.embedding(embeddingConfig.model),
-        values: texts,
-    })
-    return embeddings
+  console.log(`Embedding ${texts.length} texts...`);
+
+  try {
+    const { embeddings } = await embedMany({
+      model: openai.embedding(embeddingConfig.model),
+      values: texts,
+    });
+
+    console.log(`Successfully created ${embeddings.length} embeddings`);
+    return embeddings;
+  } catch (error) {
+    console.error("Error creating embeddings:", error);
+    throw error;
+  }
 }
 
-  export const chunksNeedingEmbedding = internalQuery({
-    args:{pdfId: v.id("pdfs")},
-    handler: async (ctx, args) => {
-      const chunks = await ctx.db
-        .query("chunks")
-        .withIndex("byPdfId", (q) => q.eq("pdfId", args.pdfId))
-        .filter((q) => q.eq(q.field("embeddingId"), null))
-        .collect();
-      return chunks;
-    }
-  });
+export const chunksNeedingEmbedding = internalQuery({
+  args: { pdfId: v.id("pdfs") },
+  handler: async (ctx, args) => {
+    const chunks = await ctx.db
+      .query("chunks")
+      .withIndex("byPdfId", (q) => q.eq("pdfId", args.pdfId))
+      .filter((q) => q.eq(q.field("embeddingId"), null))
+      .collect();
+    return chunks;
+  },
+});
 
 export const embedList = internalAction({
-    args: {
-        documentIds: v.array(v.id("pdfs")),
-    },
-    handler: async (ctx, { documentIds }) => {
-        // Get all chunks needing embedding, with their associated PDF IDs
-        type ChunkWithPdfId = {
-            _id: Id<"chunks">;
-            pdfId: Id<"pdfs">;
-            text: string;
-            embeddingId: Id<"embeddings"> | null;
-        };
-        
-        const chunksWithPdfIds: ChunkWithPdfId[] = [];
-        for (const pdfId of documentIds) {
-            const chunks = await ctx.runQuery(internal.ingest.ingest.chunksNeedingEmbedding, { pdfId });
-            // Add pdfId to each chunk object for tracking
-            chunksWithPdfIds.push(...chunks.map(chunk => ({ ...chunk, pdfId })));
-        }
-        
-        console.log("Embedding chunks:", chunksWithPdfIds);
+  args: {
+    documentIds: v.array(v.id("pdfs")),
+  },
+  handler: async (ctx, { documentIds }) => {
+    // Get all chunks needing embedding, with their associated PDF IDs
+    type ChunkWithPdfId = {
+      _id: Id<"chunks">;
+      pdfId: Id<"pdfs">;
+      pageId: Id<"pages"> | null;
+      text: string;
+      embeddingId: Id<"embeddings"> | null;
+    };
 
-        // Only process if we have chunks
-        if (chunksWithPdfIds.length === 0) return;
+    const chunksWithPdfIds: ChunkWithPdfId[] = [];
 
-        // Get embeddings for all chunk texts
-        const embeddings = await embedTexts(chunksWithPdfIds.map(chunk => chunk.text));
-        
-        // Save embeddings with their correct chunk and PDF IDs
-        await asyncMap(embeddings, async (embedding, i) => {
-            const { _id: chunkId, pdfId } = chunksWithPdfIds[i];
-            await ctx.runMutation(internal.ingest.ingest.addEmbedding, { 
-                chunkId, 
-                embedding, 
-                pdfId 
-            });
+    for (const pdfId of documentIds) {
+      // Defensive programming: skip if no documentIds
+      if (!documentIds.length) continue;
+
+      const chunks = await ctx.runQuery(
+        internal.ingest.ingest.chunksNeedingEmbedding,
+        { pdfId }
+      );
+
+      // FIX: Remove the extra dot - spread the inner map correctly
+      if (chunks && chunks.length > 0) {
+        chunksWithPdfIds.push(
+          ...chunks.map((chunk: ChunkWithPdfId) => ({ ...chunk, pdfId })) // ✅ Added type annotation
+        );
+      }
+    }
+
+    console.log(
+      `Embedding ${chunksWithPdfIds.length} chunks across ${documentIds.length} PDFs`
+    );
+
+    // Only process if we have chunks
+    if (chunksWithPdfIds.length === 0) {
+      console.log("No chunks to embed");
+      return;
+    }
+
+    try {
+      // Get embeddings for all chunk texts
+      const embeddings = await embedTexts(
+        chunksWithPdfIds.map((chunk) => chunk.text)
+      );
+
+      // Save embeddings with their correct chunk and PDF IDs
+      await asyncMap(embeddings, async (embedding, i) => {
+        const chunk = chunksWithPdfIds[i];
+        await ctx.runMutation(internal.ingest.ingest.addEmbedding, {
+          chunkId: chunk._id,
+          embedding,
+          pdfId: chunk.pdfId,
+          pageId: chunk.pageId, // ✅ Include pageId for page-level tracking
         });
-    },
+      });
+
+      console.log(`Successfully embedded ${embeddings.length} chunks`);
+    } catch (error) {
+      console.error("Error in embedList:", error);
+      throw error;
+    }
+  },
 });
 
 export const addEmbedding = internalMutation({
-    args: {
-        chunkId: v.id("chunks"),
-        embedding: v.array(v.number()),
-        pdfId: v.id("pdfs"),
-    },
-    handler: async (ctx, args) => {
-        // Get the chunk to check if it already has an embedding
-        const chunk = await ctx.db.get(args.chunkId);
-        if (!chunk) {
-            console.error("Chunk not found:", args.chunkId);
-            return;
-        }
-        
-        // Skip if the chunk already has an embedding
-        if (chunk.embeddingId !== null) {
-            console.log("Chunk already has embedding, skipping:", args.chunkId);
-            return;
-        }
+  args: {
+    chunkId: v.id("chunks"),
+    embedding: v.array(v.number()),
+    pdfId: v.id("pdfs"),
+    pageId: v.optional(v.union(v.id("pages"), v.null())), // New optional pageId
+  },
+  handler: async (ctx, args) => {
+    // Get the chunk to check if it already has an embedding
+    const chunk = await ctx.db.get(args.chunkId);
+    if (!chunk) {
+      console.error("Chunk not found:", args.chunkId);
+      return;
+    }
 
-        // Create the embedding
-        const embeddingId = await ctx.db.insert("embeddings", {
-            embedding: args.embedding,
-            chunkId: args.chunkId,
-            pdfId: args.pdfId,
-        });
-        await ctx.db.patch(args.chunkId, {embeddingId});
-    },
+    // Skip if the chunk already has an embedding
+    if (chunk.embeddingId !== null) {
+      console.log("Chunk already has embedding, skipping:", args.chunkId);
+      return;
+    }
+
+    // Create the embedding with pageId support
+    const embeddingId = await ctx.db.insert("embeddings", {
+      embedding: args.embedding,
+      chunkId: args.chunkId,
+      pdfId: args.pdfId,
+      pageId: args.pageId || null, // Store the pageId from chunk
+    });
+
+    await ctx.db.patch(args.chunkId, { embeddingId });
+
+    console.log(
+      `Created embedding for chunk ${args.chunkId} (${args.pageId ? `page ${args.pageId}` : "document level"})`
+    );
+  },
 });
 
-
 export const chunkAndEmbed = action({
-    args:{pdfId: v.id("pdfs")},
-    handler: async (ctx,args) => {
-        await ctx.runMutation(internal.ingest.ingest.createChunks, {
-            pdfId: args.pdfId,
-        });
-        await ctx.scheduler.runAfter(0, internal.ingest.ingest.embedList, { documentIds: [args.pdfId] });
-    }
-})
+  args: { pdfId: v.id("pdfs") },
+  handler: async (
+    ctx,
+    args
+  ): Promise<
+    | {
+        success: boolean;
+        pdfId: Id<"pdfs">;
+        source: "gemini" | "replicate";
+        timestamp: number;
+      }
+    | undefined
+  > => {
+    // ✅ Added explicit return type
+    console.log(`Starting chunkAndEmbed orchestration for PDF: ${args.pdfId}`);
 
+    try {
+      // ① Wait until *all* pages are cleaned
+      // We'll check both Gemini and Replicate sources
+      const geminiReady: boolean = await ctx.runQuery(
+        internal.concatenate.queries.areAllPagesComplete,
+        { pdfId: args.pdfId, source: "gemini" }
+      );
+
+      const replicateReady: boolean = await ctx.runQuery(
+        internal.concatenate.queries.areAllPagesComplete,
+        { pdfId: args.pdfId, source: "replicate" }
+      );
+
+      // For now, we proceed if either source is complete
+      // (This can be configured to wait for both if needed)
+      if (!geminiReady && !replicateReady) {
+        console.log(
+          `Pages not yet ready for PDF ${args.pdfId}. Gemini: ${geminiReady}, Replicate: ${replicateReady}`
+        );
+        return;
+      }
+
+      const readySource: "gemini" | "replicate" = geminiReady
+        ? "gemini"
+        : "replicate";
+      console.log(`All pages ready for PDF ${args.pdfId} using ${readySource}`);
+
+      // ② Create/update chunks
+      console.log(`Creating chunks for PDF ${args.pdfId}...`);
+      await ctx.runMutation(internal.ingest.ingest.createChunks, {
+        pdfId: args.pdfId,
+      });
+
+      // ③ Schedule embedding
+      console.log(`Scheduling embedding for PDF ${args.pdfId}...`);
+      await ctx.scheduler.runAfter(0, internal.ingest.ingest.embedList, {
+        documentIds: [args.pdfId],
+      });
+
+      console.log(
+        `Successfully orchestrated chunking and embedding for PDF ${args.pdfId}`
+      );
+
+      // Optional: Return status for monitoring
+      return {
+        success: true,
+        pdfId: args.pdfId,
+        source: readySource,
+        timestamp: Date.now(),
+      };
+    } catch (error) {
+      console.error(
+        `Error in chunkAndEmbed orchestration for PDF ${args.pdfId}:`,
+        error
+      );
+      throw error;
+    }
+  },
+});
 
 export const getEmbedding = internalQuery({
-    args: { pdfId: v.id("pdfs") },
-    handler: async (ctx, args) => {
-        const embedding = await ctx.db.query("embeddings").withIndex("byPdfId", (q) => q.eq("pdfId", args.pdfId)).first();
-        return embedding;
+  args: { pdfId: v.id("pdfs") },
+  handler: async (ctx, args) => {
+    const embedding = await ctx.db
+      .query("embeddings")
+      .withIndex("byPdfId", (q) => q.eq("pdfId", args.pdfId))
+      .first();
+    return embedding;
+  },
+});
+
+export const triggerChunkAndEmbedFromPageCleaning = action({
+  args: {
+    pageId: v.id("pages"),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    // ✅ Added explicit return type
+    console.log(
+      `Page cleaning completed for page ${args.pageId}, checking if PDF is ready...`
+    );
+
+    // Get the PDF ID from the page
+    const page = await ctx.runQuery(api.pdf.queries.getPdfPage, {
+      pageId: args.pageId,
+    });
+
+    if (!page) {
+      console.error(`Page not found: ${args.pageId}`);
+      return;
     }
+
+    // Check if all pages for this PDF are now ready
+    const allReady = await ctx.runQuery(
+      internal.concatenate.queries.areAllPagesComplete,
+      { pdfId: page.pdfId, source: args.source }
+    );
+
+    if (allReady) {
+      console.log(
+        `All pages ready for PDF ${page.pdfId}, triggering chunkAndEmbed...`
+      );
+
+      // Trigger the orchestration
+      await ctx.runAction(api.ingest.ingest.chunkAndEmbed, {
+        pdfId: page.pdfId,
+      });
+    } else {
+      console.log(`Not all pages ready yet for PDF ${page.pdfId}, waiting...`);
+    }
+  },
+});
+
+// Utility to check orchestration status
+export const getOrchestrationStatus = action({
+  args: { pdfId: v.id("pdfs") },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    pdfId: Id<"pdfs">;
+    readiness: {
+      gemini: boolean;
+      replicate: boolean;
+    };
+    chunking: {
+      hasChunks: boolean;
+      pageLevel: number;
+      documentLevel: number;
+      withEmbeddings: number;
+    };
+    status:
+      | "completed"
+      | "embedding_pending"
+      | "chunking_pending"
+      | "pages_pending";
+  }> => {
+    // ✅ Added explicit return type
+    // Check readiness status
+    const geminiReady = await ctx.runQuery(
+      internal.concatenate.queries.areAllPagesComplete,
+      { pdfId: args.pdfId, source: "gemini" }
+    );
+
+    const replicateReady = await ctx.runQuery(
+      internal.concatenate.queries.areAllPagesComplete,
+      { pdfId: args.pdfId, source: "replicate" }
+    );
+
+    // Check if chunks exist
+    const chunkStats = await ctx.runQuery(
+      internal.ingest.ingest.getChunkStats,
+      { pdfId: args.pdfId }
+    );
+
+    return {
+      pdfId: args.pdfId,
+      readiness: {
+        gemini: geminiReady,
+        replicate: replicateReady,
+      },
+      chunking: {
+        hasChunks: chunkStats.total > 0,
+        pageLevel: chunkStats.pageLevel,
+        documentLevel: chunkStats.documentLevel,
+        withEmbeddings: chunkStats.withEmbeddings,
+      },
+      // Determine overall status
+      status:
+        chunkStats.withEmbeddings > 0
+          ? "completed"
+          : chunkStats.total > 0
+            ? "embedding_pending"
+            : geminiReady || replicateReady
+              ? "chunking_pending"
+              : "pages_pending",
+    };
+  },
 });
 
 
@@ -2497,14 +2856,14 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { PdfPageInfo, OcrStatus } from "../../src/app/pdf/types";
+import { asyncMap } from "modern-async";
 
 // Get a list of all uploaded PDFs, potentially filtered and ordered.
 export const getPdfList = query({
   args: {
-    status: v.optional(v.string()), 
-    replicateStatus: v.optional(v.string()), 
-    filenameContains: v.optional(v.string()), 
-
+    status: v.optional(v.string()),
+    replicateStatus: v.optional(v.string()),
+    filenameContains: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let pdfsQuery = ctx.db.query("pdfs");
@@ -2513,7 +2872,6 @@ export const getPdfList = query({
     if (args.status) {
       pdfsQuery = pdfsQuery.filter((q) => q.eq(q.field("status"), args.status));
     }
-    
 
     return await pdfsQuery.order("desc").collect();
   },
@@ -2522,19 +2880,17 @@ export const getPdfList = query({
 // Get a single PDF document by its Convex ID (_id).
 export const getPdf = query({
   args: {
-    pdfId: v.id("pdfs"), 
+    pdfId: v.id("pdfs"),
   },
   handler: async (ctx, args): Promise<Doc<"pdfs"> | null> => {
     const pdf = await ctx.db.get(args.pdfId);
     if (!pdf) {
-
       console.warn(`PDF with ID ${args.pdfId} not found.`);
       throw new Error(`PDF with ID ${args.pdfId} not found.`);
     }
     return pdf;
   },
 });
-
 
 export const getPdfPages = query({
   args: {
@@ -2557,16 +2913,21 @@ export const getPdfPage = query({
   },
 });
 
-
 export const getPageWithOcrResults = query({
   args: {
     pageId: v.id("pages"),
   },
-  handler: async (ctx, args): Promise<(Doc<"pages"> & {
-    geminiOcr: Doc<"geminiPageOcr"> | null;
-    replicateOcr: Doc<"replicatePageOcr"> | null;
-    openaiCleaned: Doc<"openaiCleanedPage">[];
-  }) | null> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<
+    | (Doc<"pages"> & {
+        geminiOcr: Doc<"geminiPageOcr"> | null;
+        replicateOcr: Doc<"replicatePageOcr"> | null;
+        openaiCleaned: Doc<"openaiCleanedPage">[];
+      })
+    | null
+  > => {
     const page = await ctx.db.get(args.pageId);
     if (!page) {
       return null;
@@ -2622,7 +2983,7 @@ export const getPagesByPdf = query({
           .query("geminiPageOcr")
           .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
           .first();
-        
+
         // Get Replicate OCR status
         const replicateOcr = await ctx.db
           .query("replicatePageOcr")
@@ -2631,14 +2992,14 @@ export const getPagesByPdf = query({
 
         // Get cleaned text (prioritize OpenAI cleaned, fallback to raw OCR)
         let cleanedText: string | null = null;
-        
+
         // First try OpenAI cleaned text
         const openaiCleaned = await ctx.db
           .query("openaiCleanedPage")
           .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
           .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
           .first();
-        
+
         if (openaiCleaned?.cleanedText) {
           cleanedText = openaiCleaned.cleanedText;
         } else {
@@ -2653,9 +3014,10 @@ export const getPagesByPdf = query({
         // Create snippet (first 160 characters)
         let cleanedSnippet: string | null = null;
         if (cleanedText && cleanedText.length > 0) {
-          cleanedSnippet = cleanedText.length > 160 
-            ? `${cleanedText.slice(0, 160)}…` 
-            : cleanedText;
+          cleanedSnippet =
+            cleanedText.length > 160
+              ? `${cleanedText.slice(0, 160)}…`
+              : cleanedText;
         }
 
         return {
@@ -2672,6 +3034,23 @@ export const getPagesByPdf = query({
     return pageInfos.sort((a, b) => a.pageNumber - b.pageNumber);
   },
 });
+
+export const getPdfByIds = query({
+  args: {
+    pdfIds: v.array(v.id("pdfs")),
+  },
+  handler: async (ctx, args) => {
+    return await asyncMap(args.pdfIds, async (pdfId) => {
+      const pdf = await ctx.db.get(pdfId);
+      if (!pdf) {
+        console.warn(`PDF with ID ${pdfId} not found`);
+        return null;
+      }
+      return pdf;
+    }).then((results) => results.filter((pdf) => pdf !== null));
+  },
+});
+
 
 
 // File Path: convex/performOCR.ts
@@ -2869,143 +3248,175 @@ import { embedding as embeddingConfig } from "./config";
 export default defineSchema({
   // Stores metadata about uploaded PDF files and tracks processing status for each provider.
   pdfs: defineTable({
-    fileId: v.string(), 
-    filename: v.string(), 
-    fileSize: v.number(), 
+    fileId: v.string(),
+    filename: v.string(),
+    fileSize: v.number(),
     pageCount: v.number(),
-    uploadedAt: v.number(), 
+    uploadedAt: v.number(),
     status: v.string(),
-    processingError: v.optional(v.string()), 
-
+    processingError: v.optional(v.string()),
   }),
 
   geminiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     extractedText: v.optional(v.string()),
     processedAt: v.number(),
-    ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  })
-  .index("by_pdf_id", ["pdfId"]),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+  }).index("by_pdf_id", ["pdfId"]),
 
   replicateOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     extractedText: v.optional(v.string()),
     processedAt: v.number(),
-    ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  })
-  .index("by_pdf_id", ["pdfId"]),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+  }).index("by_pdf_id", ["pdfId"]),
 
   openaiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     cleanedText: v.string(),
     processedAt: v.number(),
-    cleaningStatus:  v.union(v.literal("started"), v.literal("completed")),
+    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
     source: v.union(v.literal("gemini"), v.literal("replicate")),
-  })
-  .index("by_pdf_id", ["pdfId"]),
+  }).index("by_pdf_id", ["pdfId"]),
 
   chunks: defineTable({
     pdfId: v.id("pdfs"),
+    pageId: v.union(v.id("pages"), v.null()), // Add pageId field
     text: v.string(),
     embeddingId: v.union(v.id("embeddings"), v.null()),
   })
     .index("byPdfId", ["pdfId"])
+    .index("byPageId", ["pageId"]) // ✅ Consistent camelCase naming
     .index("byEmbeddingId", ["embeddingId"]),
 
-
-embeddings: defineTable({
-  embedding: v.array(v.number()),
-  chunkId: v.id("chunks"),
-  pdfId: v.id("pdfs"),
-})
-  .index("byChunkId", ["chunkId"])
-  .index("byPdfId", ["pdfId"])
-
-  .vectorIndex("byEmbedding", {
-    vectorField: "embedding",
-    dimensions: embeddingConfig.dimensions,
-    filterFields: ["pdfId"],
-  }),
+  embeddings: defineTable({
+    embedding: v.array(v.number()),
+    chunkId: v.id("chunks"),
+    pdfId: v.id("pdfs"),
+    pageId: v.union(v.id("pages"), v.null()), // NEW: Add pageId field
+  })
+    .index("byChunkId", ["chunkId"])
+    .index("byPdfId", ["pdfId"])
+    .index("byPageId", ["pageId"]) // NEW: Add index for page-level queries
+    .vectorIndex("byEmbedding", {
+      vectorField: "embedding",
+      dimensions: embeddingConfig.dimensions,
+      filterFields: ["pdfId", "pageId"], // NEW: Add pageId to vector search filter fields
+    }),
 
   // Add to schema.ts
-chatSessions: defineTable({
-  sessionId: v.string(),
-}),
+  chatSessions: defineTable({
+    sessionId: v.string(),
+  }),
 
-messages: defineTable({
-  sessionId: v.optional(v.string()),
-  isUser: v.boolean(),
-  text: v.string(),
-  timestamp: v.number(),
-})
-.index("bySessionId", ["sessionId"]),
+  messages: defineTable({
+    sessionId: v.optional(v.string()),
+    isUser: v.boolean(),
+    text: v.string(),
+    timestamp: v.number(),
+  }).index("bySessionId", ["sessionId"]),
 
-ragSources: defineTable({
-  sessionId: v.string(),
-  pdfIds: v.array(v.id("pdfs")),
-})
-.index("bySessionId", ["sessionId"])
-.index("byPdfId", ["pdfIds"]),
+  ragSources: defineTable({
+    sessionId: v.string(),
+    pdfIds: v.array(v.id("pdfs")),
+  })
+    .index("bySessionId", ["sessionId"])
+    .index("byPdfId", ["pdfIds"]),
 
+  // New page by page schemas
 
+  pages: defineTable({
+    pdfId: v.id("pdfs"),
+    pageNumber: v.number(),
+    fileId: v.string(), // Convex storage ID for the page image/PDF
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("byPdfId", ["pdfId"])
+    .index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"]),
 
+  geminiPageOcr: defineTable({
+    pageId: v.id("pages"),
+    extractedText: v.optional(v.string()),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    processedAt: v.number(),
+  }).index("by_page_id", ["pageId"]),
 
-// New page by page schemas
+  replicatePageOcr: defineTable({
+    pageId: v.id("pages"),
+    extractedText: v.optional(v.string()),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    processedAt: v.number(),
+  }).index("by_page_id", ["pageId"]),
 
-pages: defineTable({
-  pdfId: v.id("pdfs"),
-  pageNumber: v.number(),
-  fileId: v.string(), // Convex storage ID for the page image/PDF
-  width: v.optional(v.number()),
-  height: v.optional(v.number()),
-  createdAt: v.number(),
-})
-.index("byPdfId", ["pdfId"])
-.index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"]),
-
-geminiPageOcr: defineTable({
-  pageId: v.id("pages"),
-  extractedText: v.optional(v.string()),
-  ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  processedAt: v.number(),
-})
-.index("by_page_id", ["pageId"]),
-
-replicatePageOcr: defineTable({
-  pageId: v.id("pages"),
-  extractedText: v.optional(v.string()),
-  ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  processedAt: v.number(),
-})
-.index("by_page_id", ["pageId"]),
-
-openaiCleanedPage: defineTable({
-  pageId: v.id("pages"),
-  cleanedText: v.string(),
-  processedAt: v.number(),
-  cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
-  source: v.union(v.literal("gemini"), v.literal("replicate")),
-})
-.index("by_page_id", ["pageId"])
-.index("by_page_source", ["pageId", "source"]), // Add this index
-
+  openaiCleanedPage: defineTable({
+    pageId: v.id("pages"),
+    cleanedText: v.string(),
+    processedAt: v.number(),
+    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
+  })
+    .index("by_page_id", ["pageId"])
+    .index("by_page_source", ["pageId", "source"]), // Add this index
 });
-
 
 
 
 // File Path: convex/serve/serve.ts
 
-import { internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
+// convex/serve/serve.ts - Enhanced vector search with page-aware filtering
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { embedTexts } from "../ingest/ingest";
 import { asyncMap } from "modern-async";
-import { streamText } from 'ai';
+import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-// Type definitions
+// Updated chunk type to include pageId and page metadata
+interface EnhancedChunk {
+  _id: Id<"chunks">;
+  pdfId: Id<"pdfs">;
+  text: string;
+  embeddingId: Id<"embeddings"> | null;
+  pageId: Id<"pages"> | null;
+  pageNumber?: number;
+  pdfFilename?: string;
+}
+
+// Enhanced citation metadata type
+interface CitationMetadata {
+  pdfId: Id<"pdfs">;
+  pageId: Id<"pages"> | null;
+  pageNumber: number | null;
+  filename: string;
+}
+
+// Interface for message structure
 interface Message {
   id?: Id<"messages">;
   isUser: boolean;
@@ -3014,47 +3425,59 @@ interface Message {
   timestamp: number;
 }
 
-interface Chunk {
-  _id: Id<"chunks">;
-  pdfId: Id<"pdfs">;
-  text: string;
-  embeddingId: Id<"embeddings"> | null;
+// Type for search results
+interface SearchResult {
+  _id: Id<"embeddings">;
+  _score: number;
 }
 
-// Main answer function implementing streaming with OpenAI
+// Interface for search results with data
+interface SearchResultWithData {
+  chunks: EnhancedChunk[];
+  citations: CitationMetadata[];
+}
+
+// Main answer function implementing streaming with OpenAI and page citations
 export const answer = internalAction({
   args: {
     sessionId: v.string(),
   },
-  handler: async (ctx, { sessionId }) => {
+  handler: async (ctx, { sessionId }): Promise<void> => {
     // Get messages and process the last user message
-    const messages = await ctx.runQuery(api.serve.serve.retrieveMessages, {
+    const messages = (await ctx.runQuery(api.serve.serve.retrieveMessages, {
       sessionId,
-    }) as Message[];
-    
+    })) as Message[];
+
     // If no messages, return early
     if (!messages.length) {
       console.error("No messages found for session:", sessionId);
       return;
     }
-    
+
     const lastUserMessage = messages.at(-1)!.text;
     console.log("Processing user message:", lastUserMessage);
-    
+
     // Create a message placeholder for the bot response
-    const messageId = await ctx.runMutation(internal.serve.serve.addBotMessage, {
-      sessionId,
-    });
+    const messageId = await ctx.runMutation(
+      internal.serve.serve.addBotMessage,
+      {
+        sessionId,
+      }
+    );
 
     try {
       // 1. Search for relevant documents using vector search
       const [embedding] = await embedTexts([lastUserMessage]);
-      
-      // Search for relevant documents
-      const searchResults = await ctx.vectorSearch("embeddings", "byEmbedding", {
-        vector: embedding,
-        limit: 8,
-      });
+
+      // **NEW: Page-aware vector search**
+      const searchResults = (await ctx.vectorSearch(
+        "embeddings",
+        "byEmbedding",
+        {
+          vector: embedding,
+          limit: 8, // Increased limit to get more results
+        }
+      )) as SearchResult[];
 
       if (searchResults.length === 0) {
         await ctx.runMutation(internal.serve.serve.updateBotMessage, {
@@ -3064,38 +3487,64 @@ export const answer = internalAction({
         return;
       }
 
-      // Get the relevant documents
-      const relevantDocuments = await ctx.runQuery(internal.serve.serve.getChunks, {
-        embeddingIds: searchResults.map((result) => result._id),
-      }) as Chunk[];
+      // **NEW: Get enhanced chunks with page metadata**
+      const relevantChunks = (await ctx.runQuery(
+        internal.serve.serve.getEnhancedChunks,
+        {
+          embeddingIds: searchResults.map((result) => result._id),
+        }
+      )) as EnhancedChunk[];
 
-      console.log(`Found ${relevantDocuments.length} relevant chunks`);
-      
+      console.log(
+        `Found ${relevantChunks.length} relevant chunks with page info`
+      );
+
+      // **NEW: Get citation metadata for all chunks**
+      const citations = (await ctx.runQuery(
+        internal.serve.serve.getCitationMetadata,
+        {
+          chunks: relevantChunks,
+        }
+      )) as CitationMetadata[];
+
       // Extract and update PDF IDs
-      const relevantPdfs = relevantDocuments.map((doc: Chunk) => doc.pdfId);
+      const relevantPdfs = relevantChunks.map(
+        (chunk: EnhancedChunk) => chunk.pdfId
+      );
       const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
-      
+
       await ctx.runMutation(internal.serve.serve.updateRagSources, {
         sessionId,
         pdfIds: uniqueRelevantPdfs,
       });
 
+      // **NEW: Prepare context with citations**
+      const contextWithCitations = relevantChunks.map((chunk, index) => {
+        const citation = citations[index];
+        const citationText = citation.pageNumber
+          ? `(${citation.filename}, p. ${citation.pageNumber})`
+          : `(${citation.filename})`; // Fallback for document-level chunks
+
+        return {
+          role: "system" as const,
+          content: `Content from ${citationText}:\n\n${chunk.text}`,
+        };
+      });
+
       // Use OpenAI's streaming API via Vercel AI SDK
       const result = streamText({
-        model: openai('gpt-4o'),
+        model: openai("gpt-4o"),
         messages: [
           {
             role: "system",
-            content:
-              "Answer the user question based on the provided documents " +
-              "or report that the question cannot be answered based on " +
-              "these documents. Keep the answer informative but brief, " +
-              "do not enumerate all possibilities.",
+            content: `You are a helpful assistant that answers questions based on provided documents. 
+            When you reference specific information, please include the citation in the format "(Filename.pdf, p. 5)" 
+            or "(Filename.pdf)" if no specific page is referenced. 
+            Keep your answers informative but concise. If the information comes from multiple pages or 
+            documents, include multiple citations. The content you receive already includes citations, 
+            so you can reference them in your response.`,
           },
-          ...relevantDocuments.map((doc: Chunk) => ({
-            role: "system" as const,
-            content: "Relevant document:\n\n" + doc.text,
-          })),
+          ...contextWithCitations,
           ...messages.map((msg: Message) => ({
             role: (msg.isUser ? "user" : "assistant") as "user" | "assistant",
             content: msg.text,
@@ -3107,29 +3556,244 @@ export const answer = internalAction({
       let fullText = "";
       for await (const textPart of result.textStream) {
         fullText += textPart;
-        
+
         // Update the bot message as new text chunks arrive
         await ctx.runMutation(internal.serve.serve.updateBotMessage, {
           messageId,
           text: fullText,
         });
       }
-      
-      console.log("Completed streaming response");
 
+      console.log("Completed streaming response with page citations");
     } catch (error) {
       console.error("Error in streaming response:", error);
-      
+
       // Update with error message
       await ctx.runMutation(internal.serve.serve.updateBotMessage, {
         messageId,
         text: "Sorry, I encountered an error while generating a response. Please try again.",
       });
-      
+
       throw error;
     }
-  }
+  },
 });
+
+// **NEW: Enhanced getChunks query with page metadata**
+export const getEnhancedChunks = internalQuery({
+  args: {
+    embeddingIds: v.array(v.id("embeddings")),
+  },
+  handler: async (ctx, { embeddingIds }): Promise<EnhancedChunk[]> => {
+    return (await asyncMap(
+      embeddingIds,
+      async (embeddingId: Id<"embeddings">) => {
+        // Get the chunk with its embedding
+        const chunk = await ctx.db
+          .query("chunks")
+          .withIndex("byEmbeddingId", (q) => q.eq("embeddingId", embeddingId))
+          .unique();
+
+        if (!chunk) return null;
+
+        // **NEW: Get page metadata if chunk has pageId**
+        if (chunk.pageId) {
+          const page = await ctx.db.get(chunk.pageId);
+          const pdf = await ctx.db.get(chunk.pdfId);
+
+          return {
+            ...chunk,
+            pageNumber: page?.pageNumber ?? null,
+            pdfFilename: pdf?.filename ?? "Unknown Document",
+          };
+        }
+
+        // For document-level chunks (pageId is null)
+        const pdf = await ctx.db.get(chunk.pdfId);
+        return {
+          ...chunk,
+          pageNumber: null,
+          pdfFilename: pdf?.filename ?? "Unknown Document",
+        };
+      }
+    ).then((results) =>
+      results.filter((chunk) => chunk !== null)
+    )) as EnhancedChunk[];
+  },
+});
+
+// **NEW: Get citation metadata for chunks**
+export const getCitationMetadata = internalQuery({
+  args: {
+    // Using any validator to allow system fields like _creationTime
+    chunks: v.array(v.any()),
+  },
+  handler: async (ctx, { chunks }): Promise<CitationMetadata[]> => {
+    return await asyncMap(
+      chunks as EnhancedChunk[],
+      async (chunk: EnhancedChunk): Promise<CitationMetadata> => {
+        if (chunk.pageId) {
+          // Page-level chunk
+          const page = await ctx.db.get(chunk.pageId);
+          const pdf = await ctx.db.get(chunk.pdfId);
+
+          return {
+            pdfId: chunk.pdfId,
+            pageId: chunk.pageId,
+            pageNumber: page?.pageNumber ?? null,
+            filename: pdf?.filename ?? "Unknown Document",
+          };
+        } else {
+          // Document-level chunk
+          const pdf = await ctx.db.get(chunk.pdfId);
+
+          return {
+            pdfId: chunk.pdfId,
+            pageId: null,
+            pageNumber: null,
+            filename: pdf?.filename ?? "Unknown Document",
+          };
+        }
+      }
+    );
+  },
+});
+
+// **NEW: Page-aware vector search**
+export const pageAwareVectorSearch = internalAction({
+  args: {
+    query: v.string(),
+    pdfId: v.optional(v.id("pdfs")),
+    pageId: v.optional(v.id("pages")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    { query, pdfId, pageId, limit = 16 }
+  ): Promise<SearchResult[]> => {
+    const [embedding] = await embedTexts([query]);
+
+    // Different filter options based on provided parameters
+    let searchOptions;
+
+    if (pdfId && pageId) {
+      // Both pdfId and pageId specified
+      searchOptions = {
+        vector: embedding,
+        limit,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filter: (q: any) => q.eq("pdfId", pdfId).eq("pageId", pageId),
+      };
+    } else if (pdfId) {
+      // Only pdfId specified
+      searchOptions = {
+        vector: embedding,
+        limit,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filter: (q: any) => q.eq("pdfId", pdfId),
+      };
+    } else if (pageId) {
+      // Only pageId specified
+      searchOptions = {
+        vector: embedding,
+        limit,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filter: (q: any) => q.eq("pageId", pageId),
+      };
+    } else {
+      // No filters
+      searchOptions = {
+        vector: embedding,
+        limit,
+      };
+    }
+
+    // Perform vector search with appropriate options
+    const searchResults = await ctx.vectorSearch(
+      "embeddings",
+      "byEmbedding",
+      searchOptions
+    );
+
+    return searchResults as SearchResult[];
+  },
+});
+
+// **NEW: Search in a specific document with page preference**
+export const searchInDocument = internalAction({
+  args: {
+    query: v.string(),
+    pdfId: v.id("pdfs"),
+    preferPageLevel: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    { query, pdfId, preferPageLevel = true }
+  ): Promise<SearchResultWithData> => {
+    const [embedding] = await embedTexts([query]);
+
+    const searchResults: SearchResult[] = [];
+
+    if (preferPageLevel) {
+      // Find page-specific results with non-null pageId
+      const pageResults = await ctx.vectorSearch("embeddings", "byEmbedding", {
+        vector: embedding,
+        limit: 12,
+        // Temporarily ignore type checking for Convex's vector filter API
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filter: (q: any) => {
+          // Use direct eq + not equal pattern that's compatible with Convex's API
+          // This finds all entries where pdfId matches and pageId is not null
+          return q.eq("pdfId", pdfId).not(q.eq("pageId", null));
+        },
+      });
+
+      searchResults.push(...(pageResults as SearchResult[]));
+    }
+
+    // If not enough page results, add document-level results
+    if (searchResults.length < 8) {
+      // Find chunks where pageId is null
+      const docResults = await ctx.vectorSearch("embeddings", "byEmbedding", {
+        vector: embedding,
+        limit: 8 - searchResults.length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        filter: (q: any) => q.eq("pdfId", pdfId).eq("pageId", null),
+      });
+
+      searchResults.push(...(docResults as SearchResult[]));
+    }
+
+    // Get enhanced chunks with page metadata
+    const enhancedChunks = (await ctx.runQuery(
+      internal.serve.serve.getEnhancedChunks,
+      {
+        embeddingIds: searchResults.map((r) => r._id),
+      }
+    )) as EnhancedChunk[];
+
+    // Get citation metadata
+    const citations = (await ctx.runQuery(
+      internal.serve.serve.getCitationMetadata,
+      {
+        chunks: enhancedChunks,
+      }
+    )) as CitationMetadata[];
+
+    return {
+      chunks: enhancedChunks,
+      citations,
+    };
+  },
+});
+
+// Helper to format citations consistently
+export const formatCitation = (citation: CitationMetadata): string => {
+  if (citation.pageNumber !== null) {
+    return `(${citation.filename}, p. ${citation.pageNumber})`;
+  }
+  return `(${citation.filename})`;
+};
 
 // Supporting mutation and query functions
 export const updateRagSources = internalMutation({
@@ -3139,35 +3803,19 @@ export const updateRagSources = internalMutation({
   },
   handler: async (ctx, { sessionId, pdfIds }) => {
     return await ctx.db.insert("ragSources", { sessionId, pdfIds });
-  }
+  },
 });
 
-// The function that's causing the error - make it a regular query (not internal)
 export const getRagSources = query({
   args: {
     sessionId: v.string(),
   },
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db.query("ragSources")
+    return await ctx.db
+      .query("ragSources")
       .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
       .collect();
-  }
-});
-
-export const getChunks = internalQuery({
-  args: {
-    embeddingIds: v.array(v.id("embeddings")),
   },
-  handler: async (ctx, { embeddingIds }) => {
-    return await asyncMap(
-      embeddingIds,
-      async (embeddingId: Id<"embeddings">) =>
-        (await ctx.db
-          .query("chunks")
-          .withIndex("byEmbeddingId", (q) => q.eq("embeddingId", embeddingId))
-          .unique())!
-    );
-  }
 });
 
 export const addBotMessage = internalMutation({
@@ -3181,7 +3829,7 @@ export const addBotMessage = internalMutation({
       sessionId,
       timestamp: Date.now(),
     });
-  }
+  },
 });
 
 export const updateBotMessage = internalMutation({
@@ -3191,7 +3839,7 @@ export const updateBotMessage = internalMutation({
   },
   handler: async (ctx, { messageId, text }) => {
     return await ctx.db.patch(messageId, { text });
-  }
+  },
 });
 
 export const saveMessage = mutation({
@@ -3201,11 +3849,16 @@ export const saveMessage = mutation({
     isUser: v.boolean(),
   },
   handler: async (ctx, { message, sessionId, isUser }) => {
-     await ctx.db.insert("messages", { text: message, sessionId, isUser, timestamp: Date.now() });
-     await ctx.scheduler.runAfter(0, internal.serve.serve.answer, {
+    await ctx.db.insert("messages", {
+      text: message,
+      sessionId,
+      isUser,
+      timestamp: Date.now(),
+    });
+    await ctx.scheduler.runAfter(0, internal.serve.serve.answer, {
       sessionId,
     });
-  }
+  },
 });
 
 export const saveSessionId = mutation({
@@ -3214,7 +3867,7 @@ export const saveSessionId = mutation({
   },
   handler: async (ctx, { sessionId }) => {
     return await ctx.db.insert("chatSessions", { sessionId });
-  }
+  },
 });
 
 export const retrieveMessages = query({
@@ -3222,11 +3875,13 @@ export const retrieveMessages = query({
     sessionId: v.string(),
   },
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db.query("messages")
+    return await ctx.db
+      .query("messages")
       .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
       .collect();
-  }
+  },
 });
+
 
 
 // File Path: convex/tsconfig.json
@@ -3682,7 +4337,7 @@ export const ocrWorkflow = workflow.define({
 // convex/workflows/providerWorkflow.ts
 import { workflow } from "./index";
 import { v } from "convex/values";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { internalMutation } from "../_generated/server";
 
 export const providerWorkflow = workflow.define({
@@ -3697,49 +4352,57 @@ export const providerWorkflow = workflow.define({
       await step.runAction(
         internal.ocr.gemini.actions.processPageWithOcr,
         { pageId },
-        { 
-            retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
-            name: `GeminiOCR-Page-${pageId}` 
-          }
+        {
+          retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
+          name: `GeminiOCR-Page-${pageId}`,
+        }
       );
     } else {
       await step.runAction(
         internal.ocr.replicate.actions.processPageWithOcr,
         { pageId },
-        { 
-            retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
-            name: `ReplicateOCR-Page-${pageId}` 
-          }
+        {
+          retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
+          name: `ReplicateOCR-Page-${pageId}`,
+        }
       );
     }
 
     // 2. Clean the OCR results using the HTTP endpoint
     await step.runAction(
-        internal.ocr.openai.actions.cleanPage,
-        { pageId, source: provider },
-        {
-          retry: { maxAttempts: 3, initialBackoffMs: 2000, base: 2 },
-          name: `CleanPageHTTP-${provider}-${pageId}`
-        }
-      );
-    },
-  });
+      internal.ocr.openai.actions.cleanPage,
+      { pageId, source: provider },
+      {
+        retry: { maxAttempts: 3, initialBackoffMs: 2000, base: 2 },
+        name: `CleanPageHTTP-${provider}-${pageId}`,
+      }
+    );
 
-
+    // 3. NEW: Trigger chunkAndEmbed orchestration check
+    await step.runAction(
+      api.ingest.ingest.triggerChunkAndEmbedFromPageCleaning,
+      { pageId, source: provider },
+      {
+        name: `TriggerOrchestration-${provider}-${pageId}`,
+      }
+    );
+  },
+});
 
 export const kickoffproviderWorkflow = internalMutation({
-    args: {
-        pageId: v.id("pages"),
-        provider: v.union(v.literal("gemini"), v.literal("replicate")),
-    },
-    handler: async (ctx, {pageId, provider}) => {
-      await workflow.start(
-        ctx,
-        internal.workflow.providerWorkflow.providerWorkflow,
-        { pageId, provider },
-      );
-    },
-  });
+  args: {
+    pageId: v.id("pages"),
+    provider: v.union(v.literal("gemini"), v.literal("replicate")),
+  },
+  handler: async (ctx, { pageId, provider }) => {
+    await workflow.start(
+      ctx,
+      internal.workflow.providerWorkflow.providerWorkflow,
+      { pageId, provider }
+    );
+  },
+});
+
 
 
 // File Path: convex/workflow/startWorkflow.ts
@@ -4739,17 +5402,20 @@ export default function ChatLayout({
 
 // File Path: src/app/chat/page.tsx
 
+// src/app/chat/page.tsx - Updated with citation handling
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import ChatInput from "../components/Chatnput";
 import ChatMessages from "../components/ChatMessages";
 import { Trash2 } from "lucide-react";
 import Sources from "../components/Sources";
-import PDFViewer from "../components/PDFViewer";
+import PDFViewer, { PDFViewerHandle } from "../components/PDFViewer";
 import ChatHeader from "../components/ChatHeader";
 import { useRouter } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
 // Polyfill for crypto.randomUUID
 const generateUUID = () => {
@@ -4772,7 +5438,11 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string>("");
+  const [selectedFilename, setSelectedFilename] = useState<string>("");
   const router = useRouter();
+
+  // Reference to PDFViewer for page navigation
+  const pdfViewerRef = useRef<PDFViewerHandle>(null);
 
   // Initialize sessionId after component mounts to avoid SSR issues
   useEffect(() => {
@@ -4782,7 +5452,48 @@ export default function Chat() {
   const clearChat = () => {
     setSessionId(generateUUID());
     setPdfUrl("");
+    setSelectedFilename("");
     router.refresh();
+  };
+
+  // Handle citation clicks
+  const handleCitationClick = async (filename: string, pageNumber?: number) => {
+    // Find the PDF ID by filename
+    const sourcesData = await api.serve.serve.getRagSources({ sessionId });
+    const pdfIds = sourcesData?.[sourcesData.length - 1]?.pdfIds ?? [];
+
+    if (pdfIds.length === 0) return;
+
+    // Get all PDFs to find the one with matching filename
+    const pdfsInfo = await api.pdf.queries.getPdfByIds({ pdfIds });
+    const targetPdf = pdfsInfo?.find((pdf) => pdf?.filename === filename);
+
+    if (!targetPdf) {
+      console.warn(`Could not find PDF with filename: ${filename}`);
+      return;
+    }
+
+    // Get the file URL
+    const fileUrl = await api.files.queries.getFileDownloadUrl({
+      fileId: targetPdf.fileId,
+    });
+
+    if (fileUrl) {
+      setPdfUrl(fileUrl);
+      setSelectedFilename(filename);
+
+      // Navigate to the specific page if pageNumber is provided
+      if (pageNumber && pdfViewerRef.current) {
+        pdfViewerRef.current.goToPage(pageNumber);
+      }
+    }
+  };
+
+  // Handle page navigation from Sources component
+  const handlePageNavigate = (pageNumber: number) => {
+    if (pdfViewerRef.current) {
+      pdfViewerRef.current.goToPage(pageNumber);
+    }
   };
 
   return (
@@ -4797,12 +5508,24 @@ export default function Chat() {
       }}
     >
       <div className="flex flex-col md:flex-row h-auto md:h-full">
-        <PDFViewer pdfUrl={pdfUrl} />
-        <div className="w-full md:w-1/2 p-3 flex flex-col h-auto md:h-[95%]">
+        <PDFViewer
+          ref={pdfViewerRef}
+          pdfUrl={pdfUrl}
+          fitToWidth={true}
+          maxScale={2.0}
+        />
+        <div className="w-full md:w-full p-3 flex flex-col h-auto md:h-[95%]">
           <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-3 border border-white/20 flex-grow flex flex-col overflow-auto max-h-[80vh] md:max-h-none">
             <ChatHeader />
-            <ChatMessages sessionId={sessionId} />
-            <Sources sessionId={sessionId} setPdfUrl={setPdfUrl} />
+            <ChatMessages
+              sessionId={sessionId}
+              onCitationClick={handleCitationClick}
+            />
+            <Sources
+              sessionId={sessionId}
+              setPdfUrl={setPdfUrl}
+              onPageNavigate={handlePageNavigate}
+            />
 
             <div className="flex items-center gap-2 mb-1 justify-center">
               <div className="max-w-[600px] flex-1">
@@ -4816,7 +5539,7 @@ export default function Chat() {
               <Button
                 onClick={clearChat}
                 variant="destructive"
-                size="icon"
+                size="sm"
                 className="bg-emerald-950 hover:bg-emerald-600"
                 title="حذف المحادثه"
               >
@@ -4826,6 +5549,13 @@ export default function Chat() {
           </div>
         </div>
       </div>
+
+      {/* Display current PDF filename if available */}
+      {selectedFilename && (
+        <div className="fixed bottom-4 left-4 bg-emerald-950/90 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full">
+          Viewing: {selectedFilename}
+        </div>
+      )}
     </div>
   );
 }
@@ -4872,27 +5602,99 @@ export default function ChatHeader() {
 
 // File Path: src/app/components/ChatMessage.tsx
 
-"use client"
+// src/app/components/ChatMessage.tsx - Updated with citation support and RTL for Arabic
+"use client";
 
-import React from 'react';
-import ReactMarkdown from 'react-markdown';
-import TypingIndicator from './TypingIndicator';
+import React from "react";
+import ReactMarkdown from "react-markdown";
+import TypingIndicator from "./TypingIndicator";
+import { ProcessedText } from "./CitationLink";
 
-export default function ChatMessage({ message, isUser }: {message: string, isUser: boolean}) {
+interface ChatMessageProps {
+  message: string;
+  isUser: boolean;
+  onCitationClick?: (filename: string, pageNumber?: number) => void;
+}
+
+// Helper function to detect if text contains Arabic
+const containsArabic = (text: string): boolean => {
+  return /[\u0600-\u06FF]/.test(text);
+};
+
+export default function ChatMessage({
+  message,
+  isUser,
+  onCitationClick = () => {},
+}: ChatMessageProps) {
+  // Detect if message contains Arabic
+  const isRTL = containsArabic(message);
+
   return (
     <div className={`flex justify-${isUser ? "end" : "start"} mb-4`}>
-      <div className={`max-w-[80%] rounded-2xl px-4 py-2 ${isUser?  "bg-emerald-600" : "bg-white/10 backdrop-blur-md border border-white/20"} text-white`}>
+      <div
+        className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+          isUser
+            ? "bg-emerald-600 text-white shadow-md"
+            : "bg-white/10 backdrop-blur-md border border-white/20 text-white shadow-md "
+        }`}
+        style={{ direction: isRTL ? "rtl" : "ltr" }}
+      >
         {message === "" ? (
-          <TypingIndicator/> 
+          <TypingIndicator />
         ) : (
-          <div className={`prose prose-invert prose-sm max-w-none break-words ${isUser ? "" : "prose-headings:text-white prose-a:text-blue-300 text-right"}`}>
-            <ReactMarkdown >
-              {message}
-            </ReactMarkdown>
+          <div
+            className={`prose prose-invert prose-sm max-w-none break-words text-lg ${
+              isUser ? "" : "prose-headings:text-white prose-a:text-blue-300"
+            }`}
+            style={{
+              textAlign: isRTL ? "right" : "left",
+              fontFamily: isRTL ? "'Noto Sans Arabic', sans-serif" : "inherit",
+            }}
+          >
+            {isUser ? (
+              // User messages don't need citation processing
+              <ReactMarkdown>{message}</ReactMarkdown>
+            ) : (
+              // Bot messages need citation processing
+              <ReactMarkdown
+                components={{
+                  // Custom component for text nodes to process citations
+                  text: ({ children }) => (
+                    <ProcessedText
+                      text={children?.toString() || ""}
+                      onCitationClick={onCitationClick}
+                    />
+                  ),
+                  // Keep other markdown components as they are
+                  p: ({ children }) => (
+                    <p>
+                      {React.Children.map(children, (child) =>
+                        typeof child === "string" ? (
+                          <ProcessedText
+                            text={child}
+                            onCitationClick={onCitationClick}
+                          />
+                        ) : (
+                          child
+                        )
+                      )}
+                    </p>
+                  ),
+                }}
+              >
+                {message}
+              </ReactMarkdown>
+            )}
           </div>
         )}
-        <p className="text-xs mt-1 text-emerald-200 text-right">
-          {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        <p
+          className="text-xs mt-1 text-emerald-200"
+          style={{ textAlign: isRTL ? "left" : "right" }}
+        >
+          {new Date().toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </p>
       </div>
     </div>
@@ -4900,46 +5702,85 @@ export default function ChatMessage({ message, isUser }: {message: string, isUse
 }
 
 
+
 // File Path: src/app/components/ChatMessages.tsx
 
-"use client"
-import { useEffect, useRef } from 'react';
-import ChatMessage from './ChatMessage';
-import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+// src/app/components/ChatMessages.tsx - Updated with citation support
+"use client";
+import { useEffect, useRef } from "react";
+import ChatMessage from "./ChatMessage";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 
-export default function ChatMessages({  sessionId }: {  sessionId: string }) {
+interface ChatMessagesProps {
+  sessionId: string;
+  onCitationClick?: (filename: string, pageNumber?: number) => void;
+}
+
+export default function ChatMessages({
+  sessionId,
+  onCitationClick = () => {},
+}: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  const retrieveMessages = useQuery(api.serve.serve.retrieveMessages, { sessionId: sessionId });
+  const retrieveMessages = useQuery(api.serve.serve.retrieveMessages, {
+    sessionId,
+  });
 
   const messages = retrieveMessages;
-  
-  // Scroll to bottom whenever messages change
+
+  // Function to check if user is near bottom
+  const isNearBottom = () => {
+    if (!chatContainerRef.current) return true;
+
+    const container = chatContainerRef.current;
+    const threshold = 100; // pixels from bottom to trigger auto-scroll
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+
+    return distanceFromBottom <= threshold;
+  };
+
+  // Scroll to bottom whenever messages change, but only if near bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottom()) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   return (
-    <div className="flex-grow overflow-y-auto mb-4 space-y-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent pr-2">
+    <div
+      ref={chatContainerRef}
+      className="flex-grow overflow-y-auto mb-4 space-y-4 scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent pr-2"
+    >
       {/* Welcome message */}
       <div className="flex justify-start">
         <div className="bg-white/20 text-white rounded-2xl px-4 py-2">
-          <p className="text-right">مرحباً! كيف يمكنني مساعدتك؟ اطرح سؤالاً وسأساعدك في العثور على المعلومات المناسبة من المستندات المتاحة.</p>
+          <p className="text-right">
+            مرحباً! كيف يمكنني مساعدتك؟ اطرح سؤالاً وسأساعدك في العثور على
+            المعلومات المناسبة من المستندات المتاحة.
+          </p>
         </div>
       </div>
-      
-      {/* Sample messages */}
-      {messages && messages.map((message, index) => (
-        <ChatMessage key={index} message={message.text} isUser={message.isUser} />
-      ))}
-      {/* <TypingIndicator /> */}
-      
+
+      {/* Messages with citation support */}
+      {messages &&
+        messages.map((message, index) => (
+          <ChatMessage
+            key={index}
+            message={message.text}
+            isUser={message.isUser}
+            onCitationClick={onCitationClick}
+          />
+        ))}
+
       {/* Invisible element for scroll reference */}
       <div ref={messagesEndRef} />
     </div>
   );
 }
+
 
 
 // File Path: src/app/components/Chatnput.tsx
@@ -5009,6 +5850,112 @@ export default function ChatInput({ input, setInput, setMessages, sessionId }:
     </div>
   );
 }
+
+
+// File Path: src/app/components/CitationLink.tsx
+
+// src/app/components/CitationLink.tsx
+"use client";
+
+import React from "react";
+import { parseCitations, ParsedCitation } from "@/utils/citationParser";
+
+interface CitationLinkProps {
+  citation: ParsedCitation;
+  onClick: (filename: string, pageNumber?: number) => void;
+  className?: string;
+}
+
+export function CitationLink({
+  citation,
+  onClick,
+  className = "",
+}: CitationLinkProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onClick(citation.filename, citation.pageNumber || undefined);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`text-emerald-400 hover:text-emerald-300 underline cursor-pointer transition-colors ${className}`}
+      title={`Go to ${citation.filename}${citation.pageNumber ? `, page ${citation.pageNumber}` : ""}`}
+    >
+      {citation.fullCitation}
+    </button>
+  );
+}
+
+interface ProcessedTextProps {
+  text: string;
+  onCitationClick: (filename: string, pageNumber?: number) => void;
+  className?: string;
+}
+
+export function ProcessedText({
+  text,
+  onCitationClick,
+  className = "",
+}: ProcessedTextProps) {
+  const citations = parseCitations(text);
+
+  if (citations.length === 0) {
+    return <span className={className}>{text}</span>;
+  }
+
+  // Split text into parts and citations
+  const parts: Array<{
+    type: "text" | "citation";
+    content: string | ParsedCitation;
+  }> = [];
+  let lastIndex = 0;
+
+  citations.forEach((citation) => {
+    const index = text.indexOf(citation.fullCitation, lastIndex);
+
+    // Add text before citation
+    if (index > lastIndex) {
+      parts.push({
+        type: "text",
+        content: text.slice(lastIndex, index),
+      });
+    }
+
+    // Add citation
+    parts.push({
+      type: "citation",
+      content: citation,
+    });
+
+    lastIndex = index + citation.fullCitation.length;
+  });
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push({
+      type: "text",
+      content: text.slice(lastIndex),
+    });
+  }
+
+  return (
+    <span className={className}>
+      {parts.map((part, index) =>
+        part.type === "text" ? (
+          <span key={index}>{part.content as string}</span>
+        ) : (
+          <CitationLink
+            key={index}
+            citation={part.content as ParsedCitation}
+            onClick={onCitationClick}
+          />
+        )
+      )}
+    </span>
+  );
+}
+
 
 
 // File Path: src/app/components/Navigation.tsx
@@ -5293,7 +6240,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
     return (
       <div
         ref={containerRef}
-        className="relative w-full h-full overflow-hidden bg-white/10 rounded-lg p-4"
+        className="relative w-full h-[95%] pt-3 overflow-hidden bg-white/10 rounded-lg p-4"
       >
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm rounded-lg z-10">
@@ -5327,68 +6274,189 @@ export default PDFViewer;
 
 // File Path: src/app/components/Sources.tsx
 
-"use client"
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
-import { Id } from '../../../convex/_generated/dataModel';
-import { Toggle } from "@/components/ui/toggle"
+import React, { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
+import { Toggle } from "@/components/ui/toggle";
+import { ChevronRight, FileText, Hash } from "lucide-react";
+import {
+  parseCitations,
+  groupCitationsByFile,
+  CitationSummary,
+} from "@/utils/citationParser";
 
 interface SourcesProps {
   sessionId: string;
   setPdfUrl: (url: string) => void;
+  onPageNavigate?: (pageNumber: number) => void;
 }
 
-export default function Sources({ sessionId, setPdfUrl }: SourcesProps) {
+interface SourceInfo {
+  pdfId: Id<"pdfs">;
+  filename: string;
+  pageRefs: Set<number>;
+}
+
+export default function Sources({
+  sessionId,
+  setPdfUrl,
+  onPageNavigate,
+}: SourcesProps) {
   // Fetch all ragSources entries for this session
   const sourcesData = useQuery(api.serve.serve.getRagSources, { sessionId });
   // Use the latest entry's pdfIds or empty array
-  const pdfIds: Id<'pdfs'>[] = sourcesData?.[sourcesData.length - 1]?.pdfIds ?? [];
+  const pdfIds: Id<"pdfs">[] =
+    sourcesData?.[sourcesData.length - 1]?.pdfIds ?? [];
 
   // Track which PDF is selected
-  const [selectedPdfId, setSelectedPdfId] = useState<Id<'pdfs'> | null>(null);
+  const [selectedPdfId, setSelectedPdfId] = useState<Id<"pdfs"> | null>(null);
+  const [selectedPageNumber, setSelectedPageNumber] = useState<number | null>(
+    null
+  );
+  const [sourceInfos, setSourceInfos] = useState<SourceInfo[]>([]);
+
+  // Query for all PDFs to get their filenames
+  const pdfsInfo = useQuery(
+    api.pdf.queries.getPdfByIds,
+    pdfIds.length > 0 ? { pdfIds } : "skip"
+  );
 
   // Query metadata and file URL when a PDF is selected
-  const pdfMeta = useQuery(api.pdf.queries.getPdf, selectedPdfId ? { pdfId: selectedPdfId } : 'skip');
+  const pdfMeta = useQuery(
+    api.pdf.queries.getPdf,
+    selectedPdfId ? { pdfId: selectedPdfId } : "skip"
+  );
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
-    pdfMeta?.fileId ? { fileId: pdfMeta.fileId } : 'skip'
+    pdfMeta?.fileId ? { fileId: pdfMeta.fileId } : "skip"
   );
+
+  // Query messages to extract citations
+  const messages = useQuery(api.serve.serve.retrieveMessages, { sessionId });
+
+  // Get page references for the session by parsing citations from messages
+  useEffect(() => {
+    if (pdfsInfo && messages) {
+      // Parse citations from all bot messages
+      const allCitations = messages
+        .filter((msg) => !msg.isUser)
+        .flatMap((msg) => parseCitations(msg.text));
+
+      // Group citations by file
+      const citationSummary = groupCitationsByFile(allCitations);
+
+      // Create source infos with extracted page references
+      const infos: SourceInfo[] = pdfsInfo.map((pdf) => {
+        const pdfCitations = citationSummary[pdf.filename] || {
+          pages: new Set<number>(),
+          totalReferences: 0,
+        };
+
+        return {
+          pdfId: pdf._id,
+          filename: pdf.filename,
+          pageRefs: pdfCitations.pages,
+        };
+      });
+
+      setSourceInfos(infos);
+    }
+  }, [pdfsInfo, messages]);
 
   // Whenever fileUrl changes, update the parent PDFViewer
   useEffect(() => {
     if (fileUrl) {
       setPdfUrl(fileUrl);
+      // Navigate to specific page if selected
+      if (selectedPageNumber && onPageNavigate) {
+        onPageNavigate(selectedPageNumber);
+      }
     }
-  }, [fileUrl, setPdfUrl]);
+  }, [fileUrl, setPdfUrl, selectedPageNumber, onPageNavigate]);
 
   // If there are no sources yet, render nothing
   if (!pdfIds.length) {
     return null;
   }
 
-  // Render toggle buttons for each PDF source
+  // Handler for page number selection
+  const handlePageSelect = (pageNumber: number) => {
+    setSelectedPageNumber(pageNumber);
+    if (onPageNavigate) {
+      onPageNavigate(pageNumber);
+    }
+  };
+
+  // Render toggle buttons for each PDF source with page references
   return (
     <div className="mb-4 animate-in fade-in duration-300">
-      <div className="flex flex-wrap gap-2">
-        {pdfIds.map((id) => (
-          <Toggle
-            key={id.toString()}
-            pressed={selectedPdfId === id}
-            onPressedChange={() => setSelectedPdfId(id)}
-            variant="outline"
-            className="bg-emerald-950 border-emerald-700/90 text-white/50 h-8 w-20 p-5 rounded-3xl
-              data-[state=on]:bg-emerald-600/50 data-[state=on]:text-white 
-              transition-colors duration-200"
+      <div className="space-y-2">
+        {sourceInfos.map((sourceInfo) => (
+          <div
+            key={sourceInfo.pdfId.toString()}
+            className="border-l-2 border-emerald-700/30 pl-2"
           >
-            المصدر
-          </Toggle>
+            {/* PDF Toggle Button */}
+            <Toggle
+              pressed={selectedPdfId === sourceInfo.pdfId}
+              onPressedChange={() => {
+                setSelectedPdfId(sourceInfo.pdfId);
+                setSelectedPageNumber(null); // Reset page selection
+              }}
+              variant="outline"
+              className="bg-emerald-950 border-emerald-700/90 text-white/80 h-8 justify-start gap-2
+                data-[state=on]:bg-emerald-600/50 data-[state=on]:text-white 
+                transition-colors duration-200"
+            >
+              <FileText className="w-3 h-3" />
+              <span className="truncate max-w-[150px]">
+                {sourceInfo.filename.replace(/\.[^/.]+$/, "")}
+              </span>
+            </Toggle>
+
+            {/* Page Reference Buttons */}
+            {selectedPdfId === sourceInfo.pdfId &&
+              sourceInfo.pageRefs.size > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1 ml-6">
+                  {Array.from(sourceInfo.pageRefs)
+                    .sort((a, b) => a - b)
+                    .map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageSelect(pageNum)}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          selectedPageNumber === pageNum
+                            ? "bg-emerald-600 text-white"
+                            : "bg-emerald-950/50 text-white/70 hover:bg-emerald-700/50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Hash className="w-2 h-2" />
+                          {pageNum}
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              )}
+          </div>
         ))}
       </div>
+
+      {/* Citation Format Example (for testing) */}
+      {selectedPdfId && selectedPageNumber && (
+        <div className="mt-2 text-xs text-white/50 border-t border-white/10 pt-2">
+          Citation: (
+          {sourceInfos.find((s) => s.pdfId === selectedPdfId)?.filename}, p.{" "}
+          {selectedPageNumber})
+        </div>
+      )}
     </div>
   );
-} 
+}
+
 
 
 // File Path: src/app/components/TypingIndicator.tsx
@@ -5759,7 +6827,7 @@ export default function App() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer">
+      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-[400px] text-white hover:bg-white/20 transition-colors cursor-pointer">
         <h2 className="text-3xl font-semibold mb-4 text-right">
           ارفع مستنداتك
         </h2>
@@ -5783,7 +6851,7 @@ export default function App() {
 
       {/* Gold AI card */}
       <section
-        className="w-[300px] shadow-lg rounded-2xl p-6 border border-amber-400 h-100 flex flex-col items-center justify-center"
+        className="w-[300px] h-[400px] shadow-lg rounded-2xl p-6 border border-amber-400 h-100 flex flex-col items-center justify-center"
         style={{
           background: "linear-gradient(145deg, #d4af37 10%, #b8860b 40%)",
           boxShadow: "0 10px 25px -5px rgba(180, 130, 20, 0.5)",
@@ -5798,17 +6866,20 @@ export default function App() {
 
       {/* Chat card with onClick handler */}
       <section
-        className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer"
+        className="w-[300px] h-[400px] flex flex-col bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer"
         onClick={handleChatCardClick}
       >
-        <h2 className="text-3xl font-semibold mb-4 text-right">
-          تحدث مع مستنداتك
-        </h2>
-        <p className="text-white/80 text-right">تحدث مع مستنداتك بأسهل طريقة</p>
-
+        <div>
+          <h2 className="text-3xl font-semibold mb-4 text-right">
+            تحدث مع مستنداتك
+          </h2>
+          <p className="text-white/80 text-right">
+            تحدث مع مستنداتك بأسهل طريقة
+          </p>
+        </div>
         {/* Chat icon from Lucide */}
-        <div className="flex justify-center my-15">
-          <MessageCircleMore className="w-20 h-20 text-white/80" />
+        <div className="flex-1 flex justify-center items-center w-full">
+          <MessageCircleMore className="w-40 h-40 text-white/80" />
         </div>
       </section>
 
@@ -7116,7 +8187,7 @@ export default function PagesView() {
     : "w-full md:w-[65%] lg:w-[70%]";
   const pdfWidth = isAccordionCollapsed
     ? "w-full"
-    : "w-full md:w-[35%] lg:w-[30%]";
+    : "w-full md:w-[35%] lg:w-[70%]";
 
   // Show skeleton loading state
   if (!pdf || !pages) {
@@ -8803,6 +9874,183 @@ export const usePageStream = create<PageStreamState>((set) => ({
 // Handy selector for getting text by pageId and source
 export const selectChunk = (pageId: Id<"pages">, src: "gemini" | "replicate") =>
   (state: PageStreamState) => state.chunks[`${pageId}_${src}`] ?? "";
+
+
+// File Path: src/utils/citationParser.ts
+
+// src/utils/citationParser.ts - Utility to parse citations from text
+
+export interface ParsedCitation {
+  filename: string;
+  pageNumber: number | null;
+  fullCitation: string;
+}
+
+export interface CitationSummary {
+  [filename: string]: {
+    pages: Set<number>;
+    totalReferences: number;
+  };
+}
+
+/**
+ * Parse citations from bot response text
+ * Supports format: (filename.pdf, p. 5) or (filename.pdf)
+ */
+export function parseCitations(text: string): ParsedCitation[] {
+  // Regex to match citations in the format (filename.pdf, p. 5) or (filename.pdf)
+  const citationRegex = /\(([^,)]+\.pdf)(?:,\s*p\.\s*(\d+))?\)/g;
+  const citations: ParsedCitation[] = [];
+
+  let match;
+  while ((match = citationRegex.exec(text)) !== null) {
+    const filename = match[1];
+    const pageNumber = match[2] ? parseInt(match[2], 10) : null;
+    const fullCitation = match[0];
+
+    citations.push({
+      filename,
+      pageNumber,
+      fullCitation,
+    });
+  }
+
+  return citations;
+}
+
+/**
+ * Group citations by filename with page references
+ */
+export function groupCitationsByFile(
+  citations: ParsedCitation[]
+): CitationSummary {
+  const summary: CitationSummary = {};
+
+  citations.forEach((citation) => {
+    if (!summary[citation.filename]) {
+      summary[citation.filename] = {
+        pages: new Set<number>(),
+        totalReferences: 0,
+      };
+    }
+
+    if (citation.pageNumber !== null) {
+      summary[citation.filename].pages.add(citation.pageNumber);
+    }
+    summary[citation.filename].totalReferences++;
+  });
+
+  return summary;
+}
+
+/**
+ * Extract all unique page numbers from citations
+ */
+export function extractPageNumbers(citations: ParsedCitation[]): number[] {
+  const pages = new Set<number>();
+
+  citations.forEach((citation) => {
+    if (citation.pageNumber !== null) {
+      pages.add(citation.pageNumber);
+    }
+  });
+
+  return Array.from(pages).sort((a, b) => a - b);
+}
+
+/**
+ * Find which files are referenced in the text
+ */
+export function findReferencedFiles(text: string): string[] {
+  const citations = parseCitations(text);
+  const files = new Set<string>();
+
+  citations.forEach((citation) => {
+    files.add(citation.filename);
+  });
+
+  return Array.from(files);
+}
+
+/**
+ * Create a citation link that can be used in UI
+ */
+export function createCitationLink(citation: ParsedCitation): string {
+  if (citation.pageNumber !== null) {
+    return `${citation.filename}#page=${citation.pageNumber}`;
+  }
+  return citation.filename;
+}
+
+/**
+ * Format citation for display
+ */
+export function formatCitation(
+  filename: string,
+  pageNumber?: number | null
+): string {
+  if (pageNumber !== null && pageNumber !== undefined) {
+    return `(${filename}, p. ${pageNumber})`;
+  }
+  return `(${filename})`;
+}
+
+/**
+ * Validate if a citation is properly formatted
+ */
+export function isValidCitation(citation: string): boolean {
+  const citationRegex = /\(([^,)]+\.pdf)(?:,\s*p\.\s*(\d+))?\)/;
+  return citationRegex.test(citation);
+}
+
+/**
+ * Convert citations to clickable links in HTML/markdown
+ */
+export function makeCitationsClickable(
+  text: string,
+  onCitationClick: (filename: string, pageNumber?: number) => void
+): string {
+  const citations = parseCitations(text);
+  let result = text;
+
+  // Sort citations by position in text (reverse order to avoid index issues)
+  citations.reverse().forEach((citation) => {
+    const clickableLink = `<button 
+      class="text-emerald-400 hover:text-emerald-300 underline cursor-pointer"
+      onclick="citationClick('${citation.filename}', ${citation.pageNumber})"
+    >
+      ${citation.fullCitation}
+    </button>`;
+
+    result = result.replace(citation.fullCitation, clickableLink);
+  });
+
+  return result;
+}
+
+/**
+ * Get statistics about citations in text
+ */
+export function getCitationStats(text: string) {
+  const citations = parseCitations(text);
+  const summary = groupCitationsByFile(citations);
+
+  return {
+    totalCitations: citations.length,
+    uniqueFiles: Object.keys(summary).length,
+    filesWithPages: Object.values(summary).filter((s) => s.pages.size > 0)
+      .length,
+    mostReferencedFile:
+      Object.entries(summary).sort(
+        ([, a], [, b]) => b.totalReferences - a.totalReferences
+      )[0]?.[0] || null,
+    totalUniquePages: Object.values(summary).reduce(
+      (sum, s) => sum + s.pages.size,
+      0
+    ),
+  };
+}
+
 
 
 // File Path: src/utils/pdfUtils.ts
