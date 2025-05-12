@@ -6,125 +6,131 @@ import { embedding as embeddingConfig } from "./config";
 export default defineSchema({
   // Stores metadata about uploaded PDF files and tracks processing status for each provider.
   pdfs: defineTable({
-    fileId: v.string(), 
-    filename: v.string(), 
-    fileSize: v.number(), 
+    fileId: v.string(),
+    filename: v.string(),
+    fileSize: v.number(),
     pageCount: v.number(),
-    uploadedAt: v.number(), 
+    uploadedAt: v.number(),
     status: v.string(),
-    processingError: v.optional(v.string()), 
-
+    processingError: v.optional(v.string()),
   }),
 
   geminiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     extractedText: v.optional(v.string()),
     processedAt: v.number(),
-    ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  })
-  .index("by_pdf_id", ["pdfId"]),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+  }).index("by_pdf_id", ["pdfId"]),
 
   replicateOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     extractedText: v.optional(v.string()),
     processedAt: v.number(),
-    ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  })
-  .index("by_pdf_id", ["pdfId"]),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+  }).index("by_pdf_id", ["pdfId"]),
 
   openaiOcrResults: defineTable({
     pdfId: v.id("pdfs"),
     cleanedText: v.string(),
     processedAt: v.number(),
-    cleaningStatus:  v.union(v.literal("started"), v.literal("completed")),
+    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
     source: v.union(v.literal("gemini"), v.literal("replicate")),
-  })
-  .index("by_pdf_id", ["pdfId"]),
+  }).index("by_pdf_id", ["pdfId"]),
 
   chunks: defineTable({
     pdfId: v.id("pdfs"),
+    pageId: v.union(v.id("pages"), v.null()), // Add pageId field
     text: v.string(),
     embeddingId: v.union(v.id("embeddings"), v.null()),
   })
     .index("byPdfId", ["pdfId"])
+    .index("byPageId", ["pageId"]) // ✅ Consistent camelCase naming
     .index("byEmbeddingId", ["embeddingId"]),
 
-
-embeddings: defineTable({
-  embedding: v.array(v.number()),
-  chunkId: v.id("chunks"),
-  pdfId: v.id("pdfs"),
-})
-  .index("byChunkId", ["chunkId"])
-  .index("byPdfId", ["pdfId"])
-
-  .vectorIndex("byEmbedding", {
-    vectorField: "embedding",
-    dimensions: embeddingConfig.dimensions,
-    filterFields: ["pdfId"],
-  }),
+  embeddings: defineTable({
+    embedding: v.array(v.number()),
+    chunkId: v.id("chunks"),
+    pdfId: v.id("pdfs"),
+    pageId: v.union(v.id("pages"), v.null()), // NEW: Add pageId field
+  })
+    .index("byChunkId", ["chunkId"])
+    .index("byPdfId", ["pdfId"])
+    .index("byPageId", ["pageId"]) // NEW: Add index for page-level queries
+    .vectorIndex("byEmbedding", {
+      vectorField: "embedding",
+      dimensions: embeddingConfig.dimensions,
+      filterFields: ["pdfId", "pageId"], // NEW: Add pageId to vector search filter fields
+    }),
 
   // Add to schema.ts
-chatSessions: defineTable({
-  sessionId: v.string(),
-}),
+  chatSessions: defineTable({
+    sessionId: v.string(),
+  }),
 
-messages: defineTable({
-  sessionId: v.optional(v.string()),
-  isUser: v.boolean(),
-  text: v.string(),
-  timestamp: v.number(),
-})
-.index("bySessionId", ["sessionId"]),
+  messages: defineTable({
+    sessionId: v.optional(v.string()),
+    isUser: v.boolean(),
+    text: v.string(),
+    timestamp: v.number(),
+  }).index("bySessionId", ["sessionId"]),
 
-ragSources: defineTable({
-  sessionId: v.string(),
-  pdfIds: v.array(v.id("pdfs")),
-})
-.index("bySessionId", ["sessionId"])
-.index("byPdfId", ["pdfIds"]),
+  ragSources: defineTable({
+    sessionId: v.string(),
+    pdfIds: v.array(v.id("pdfs")),
+  })
+    .index("bySessionId", ["sessionId"])
+    .index("byPdfId", ["pdfIds"]),
 
+  // New page by page schemas
 
+  pages: defineTable({
+    pdfId: v.id("pdfs"),
+    pageNumber: v.number(),
+    fileId: v.string(), // Convex storage ID for the page image/PDF
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("byPdfId", ["pdfId"])
+    .index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"]),
 
+  geminiPageOcr: defineTable({
+    pageId: v.id("pages"),
+    extractedText: v.optional(v.string()),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    processedAt: v.number(),
+  }).index("by_page_id", ["pageId"]),
 
-// New page by page schemas
+  replicatePageOcr: defineTable({
+    pageId: v.id("pages"),
+    extractedText: v.optional(v.string()),
+    ocrStatus: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    processedAt: v.number(),
+  }).index("by_page_id", ["pageId"]),
 
-pages: defineTable({
-  pdfId: v.id("pdfs"),
-  pageNumber: v.number(),
-  fileId: v.string(), // Convex storage ID for the page image/PDF
-  width: v.optional(v.number()),
-  height: v.optional(v.number()),
-  createdAt: v.number(),
-})
-.index("byPdfId", ["pdfId"])
-.index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"]),
-
-geminiPageOcr: defineTable({
-  pageId: v.id("pages"),
-  extractedText: v.optional(v.string()),
-  ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  processedAt: v.number(),
-})
-.index("by_page_id", ["pageId"]),
-
-replicatePageOcr: defineTable({
-  pageId: v.id("pages"),
-  extractedText: v.optional(v.string()),
-  ocrStatus: v.union(v.literal("processing"), v.literal("completed"), v.literal("failed")),
-  processedAt: v.number(),
-})
-.index("by_page_id", ["pageId"]),
-
-openaiCleanedPage: defineTable({
-  pageId: v.id("pages"),
-  cleanedText: v.string(),
-  processedAt: v.number(),
-  cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
-  source: v.union(v.literal("gemini"), v.literal("replicate")),
-})
-.index("by_page_id", ["pageId"])
-.index("by_page_source", ["pageId", "source"]), // Add this index
-
+  openaiCleanedPage: defineTable({
+    pageId: v.id("pages"),
+    cleanedText: v.string(),
+    processedAt: v.number(),
+    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
+    source: v.union(v.literal("gemini"), v.literal("replicate")),
+  })
+    .index("by_page_id", ["pageId"])
+    .index("by_page_source", ["pageId", "source"]), // Add this index
 });
-

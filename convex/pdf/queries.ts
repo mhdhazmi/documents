@@ -4,14 +4,14 @@ import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import type { PdfPageInfo, OcrStatus } from "../../src/app/pdf/types";
+import { asyncMap } from "modern-async";
 
 // Get a list of all uploaded PDFs, potentially filtered and ordered.
 export const getPdfList = query({
   args: {
-    status: v.optional(v.string()), 
-    replicateStatus: v.optional(v.string()), 
-    filenameContains: v.optional(v.string()), 
-
+    status: v.optional(v.string()),
+    replicateStatus: v.optional(v.string()),
+    filenameContains: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let pdfsQuery = ctx.db.query("pdfs");
@@ -20,7 +20,6 @@ export const getPdfList = query({
     if (args.status) {
       pdfsQuery = pdfsQuery.filter((q) => q.eq(q.field("status"), args.status));
     }
-    
 
     return await pdfsQuery.order("desc").collect();
   },
@@ -29,19 +28,17 @@ export const getPdfList = query({
 // Get a single PDF document by its Convex ID (_id).
 export const getPdf = query({
   args: {
-    pdfId: v.id("pdfs"), 
+    pdfId: v.id("pdfs"),
   },
   handler: async (ctx, args): Promise<Doc<"pdfs"> | null> => {
     const pdf = await ctx.db.get(args.pdfId);
     if (!pdf) {
-
       console.warn(`PDF with ID ${args.pdfId} not found.`);
       throw new Error(`PDF with ID ${args.pdfId} not found.`);
     }
     return pdf;
   },
 });
-
 
 export const getPdfPages = query({
   args: {
@@ -64,16 +61,21 @@ export const getPdfPage = query({
   },
 });
 
-
 export const getPageWithOcrResults = query({
   args: {
     pageId: v.id("pages"),
   },
-  handler: async (ctx, args): Promise<(Doc<"pages"> & {
-    geminiOcr: Doc<"geminiPageOcr"> | null;
-    replicateOcr: Doc<"replicatePageOcr"> | null;
-    openaiCleaned: Doc<"openaiCleanedPage">[];
-  }) | null> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<
+    | (Doc<"pages"> & {
+        geminiOcr: Doc<"geminiPageOcr"> | null;
+        replicateOcr: Doc<"replicatePageOcr"> | null;
+        openaiCleaned: Doc<"openaiCleanedPage">[];
+      })
+    | null
+  > => {
     const page = await ctx.db.get(args.pageId);
     if (!page) {
       return null;
@@ -129,7 +131,7 @@ export const getPagesByPdf = query({
           .query("geminiPageOcr")
           .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
           .first();
-        
+
         // Get Replicate OCR status
         const replicateOcr = await ctx.db
           .query("replicatePageOcr")
@@ -138,14 +140,14 @@ export const getPagesByPdf = query({
 
         // Get cleaned text (prioritize OpenAI cleaned, fallback to raw OCR)
         let cleanedText: string | null = null;
-        
+
         // First try OpenAI cleaned text
         const openaiCleaned = await ctx.db
           .query("openaiCleanedPage")
           .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
           .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
           .first();
-        
+
         if (openaiCleaned?.cleanedText) {
           cleanedText = openaiCleaned.cleanedText;
         } else {
@@ -160,9 +162,10 @@ export const getPagesByPdf = query({
         // Create snippet (first 160 characters)
         let cleanedSnippet: string | null = null;
         if (cleanedText && cleanedText.length > 0) {
-          cleanedSnippet = cleanedText.length > 160 
-            ? `${cleanedText.slice(0, 160)}…` 
-            : cleanedText;
+          cleanedSnippet =
+            cleanedText.length > 160
+              ? `${cleanedText.slice(0, 160)}…`
+              : cleanedText;
         }
 
         return {
@@ -177,5 +180,21 @@ export const getPagesByPdf = query({
 
     // Return pages sorted by page number
     return pageInfos.sort((a, b) => a.pageNumber - b.pageNumber);
+  },
+});
+
+export const getPdfByIds = query({
+  args: {
+    pdfIds: v.array(v.id("pdfs")),
+  },
+  handler: async (ctx, args) => {
+    return await asyncMap(args.pdfIds, async (pdfId) => {
+      const pdf = await ctx.db.get(pdfId);
+      if (!pdf) {
+        console.warn(`PDF with ID ${pdfId} not found`);
+        return null;
+      }
+      return pdf;
+    }).then((results) => results.filter((pdf) => pdf !== null));
   },
 });

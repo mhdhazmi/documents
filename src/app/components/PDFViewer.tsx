@@ -248,7 +248,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
     return (
       <div
         ref={containerRef}
-        className="relative w-full h-full overflow-hidden bg-white/10 rounded-lg p-4"
+        className="relative w-full h-[95%] pt-3 overflow-hidden bg-white/10 rounded-lg p-4"
       >
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm rounded-lg z-10">

@@ -7,6 +7,21 @@
     "convex": {
       "command": "npx",
       "args": ["-y", "convex@latest", "mcp", "start"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["-y", "shadcn@canary", "registry:mcp"],
+      "env": {
+        "REGISTRY_URL": "https://animate-ui.com/r/registry.json"
+      }
     }
   }
-} 
+}

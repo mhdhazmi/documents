@@ -49,7 +49,7 @@ export default function PagesView() {
     : "w-full md:w-[65%] lg:w-[70%]";
   const pdfWidth = isAccordionCollapsed
     ? "w-full"
-    : "w-full md:w-[35%] lg:w-[30%]";
+    : "w-full md:w-[35%] lg:w-[70%]";
 
   // Show skeleton loading state
   if (!pdf || !pages) {

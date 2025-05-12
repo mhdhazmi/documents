@@ -106,7 +106,7 @@ export default function App() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer">
+      <section className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-[400px] text-white hover:bg-white/20 transition-colors cursor-pointer">
         <h2 className="text-3xl font-semibold mb-4 text-right">
           ارفع مستنداتك
         </h2>
@@ -130,7 +130,7 @@ export default function App() {
 
       {/* Gold AI card */}
       <section
-        className="w-[300px] shadow-lg rounded-2xl p-6 border border-amber-400 h-100 flex flex-col items-center justify-center"
+        className="w-[300px] h-[400px] shadow-lg rounded-2xl p-6 border border-amber-400 h-100 flex flex-col items-center justify-center"
         style={{
           background: "linear-gradient(145deg, #d4af37 10%, #b8860b 40%)",
           boxShadow: "0 10px 25px -5px rgba(180, 130, 20, 0.5)",
@@ -145,17 +145,20 @@ export default function App() {
 
       {/* Chat card with onClick handler */}
       <section
-        className="w-[300px] bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 h-100 text-white hover:bg-white/20 transition-colors cursor-pointer"
+        className="w-[300px] h-[400px] flex flex-col bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-6 border border-white/20 text-white hover:bg-white/20 transition-colors cursor-pointer"
         onClick={handleChatCardClick}
       >
-        <h2 className="text-3xl font-semibold mb-4 text-right">
-          تحدث مع مستنداتك
-        </h2>
-        <p className="text-white/80 text-right">تحدث مع مستنداتك بأسهل طريقة</p>
-
+        <div>
+          <h2 className="text-3xl font-semibold mb-4 text-right">
+            تحدث مع مستنداتك
+          </h2>
+          <p className="text-white/80 text-right">
+            تحدث مع مستنداتك بأسهل طريقة
+          </p>
+        </div>
         {/* Chat icon from Lucide */}
-        <div className="flex justify-center my-15">
-          <MessageCircleMore className="w-20 h-20 text-white/80" />
+        <div className="flex-1 flex justify-center items-center w-full">
+          <MessageCircleMore className="w-40 h-40 text-white/80" />
         </div>
       </section>
 
