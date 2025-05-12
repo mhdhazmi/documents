@@ -885,29 +885,32 @@ export const generateUploadUrl = mutation({
 // convex/files/queries.ts
 import { query } from "../_generated/server";
 import { v } from "convex/values";
+
 // Query to get a short-lived downloadable URL for a file stored in Convex storage.
 export const getFileDownloadUrl = query({
   args: {
-    fileId: v.string(), 
-    
+    fileId: v.id("_storage"), // Changed to use v.id for proper storage ID validation
   },
   handler: async (ctx, args) => {
-   
-
     try {
-     
-      const url = await ctx.storage.getUrl(args.fileId); 
+      const url = await ctx.storage.getUrl(args.fileId);
       if (!url) {
-           console.warn(`Could not generate download URL for fileId: ${args.fileId}. File might not exist.`);
-           throw new Error("Unable to generate download URL right now.");
+        console.warn(
+          `Could not generate download URL for fileId: ${args.fileId}. File might not exist.`
+        );
+        throw new Error("Unable to generate download URL right now.");
       }
-      return url; 
+      return url;
     } catch (error) {
-        console.error(`Error generating download URL for fileId ${args.fileId}:`, error);
-        throw new Error("Failed to generate download URL."); 
+      console.error(
+        `Error generating download URL for fileId ${args.fileId}:`,
+        error
+      );
+      throw new Error("Failed to generate download URL.");
     }
   },
 });
+
 
 
 // File Path: convex/http.ts
@@ -5219,6 +5222,7 @@ module.exports = nextConfig;
     "replicate": "^1.0.1",
     "tailwind-merge": "^3.2.0",
     "tailwindcss": "^3.3.3",
+    "tailwindcss-animate": "^1.0.7",
     "zustand": "^5.0.4"
   },
   "devDependencies": {
@@ -5416,6 +5420,19 @@ import ChatHeader from "../components/ChatHeader";
 import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
+
+interface PDF {
+  _id: Id<"pdfs">;
+  _creationTime: number;
+  processingError?: string;
+  fileId: Id<"_storage">; // Updated to use proper storage ID type
+  filename: string;
+  fileSize: number;
+  pageCount: number;
+  uploadedAt: number;
+  status: string;
+}
 
 // Polyfill for crypto.randomUUID
 const generateUUID = () => {
@@ -5439,10 +5456,31 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string>("");
   const [selectedFilename, setSelectedFilename] = useState<string>("");
+  const [selectedFileId, setSelectedFileId] = useState<Id<"_storage"> | null>(
+    null
+  ); // Updated type
   const router = useRouter();
 
   // Reference to PDFViewer for page navigation
   const pdfViewerRef = useRef<PDFViewerHandle>(null);
+
+  // Fetch data using Convex queries at the component level
+  const sourcesData = useQuery(api.serve.serve.getRagSources, { sessionId });
+  const pdfIds = sourcesData?.[sourcesData?.length - 1]?.pdfIds ?? [];
+  const pdfsInfo = useQuery(api.pdf.queries.getPdfByIds, { pdfIds }) as
+    | PDF[]
+    | undefined;
+  const fileUrl = useQuery(
+    api.files.queries.getFileDownloadUrl,
+    selectedFileId ? { fileId: selectedFileId } : "skip"
+  );
+
+  // Update PDF URL when fileUrl changes
+  useEffect(() => {
+    if (fileUrl) {
+      setPdfUrl(fileUrl);
+    }
+  }, [fileUrl]);
 
   // Initialize sessionId after component mounts to avoid SSR issues
   useEffect(() => {
@@ -5453,39 +5491,31 @@ export default function Chat() {
     setSessionId(generateUUID());
     setPdfUrl("");
     setSelectedFilename("");
+    setSelectedFileId(null);
     router.refresh();
   };
 
   // Handle citation clicks
-  const handleCitationClick = async (filename: string, pageNumber?: number) => {
-    // Find the PDF ID by filename
-    const sourcesData = await api.serve.serve.getRagSources({ sessionId });
-    const pdfIds = sourcesData?.[sourcesData.length - 1]?.pdfIds ?? [];
+  const handleCitationClick = (filename: string, pageNumber?: number) => {
+    try {
+      if (!pdfsInfo) return;
 
-    if (pdfIds.length === 0) return;
+      const targetPdf = pdfsInfo.find((pdf) => pdf?.filename === filename);
 
-    // Get all PDFs to find the one with matching filename
-    const pdfsInfo = await api.pdf.queries.getPdfByIds({ pdfIds });
-    const targetPdf = pdfsInfo?.find((pdf) => pdf?.filename === filename);
+      if (!targetPdf) {
+        console.warn(`Could not find PDF with filename: ${filename}`);
+        return;
+      }
 
-    if (!targetPdf) {
-      console.warn(`Could not find PDF with filename: ${filename}`);
-      return;
-    }
-
-    // Get the file URL
-    const fileUrl = await api.files.queries.getFileDownloadUrl({
-      fileId: targetPdf.fileId,
-    });
-
-    if (fileUrl) {
-      setPdfUrl(fileUrl);
+      setSelectedFileId(targetPdf.fileId);
       setSelectedFilename(filename);
 
       // Navigate to the specific page if pageNumber is provided
       if (pageNumber && pdfViewerRef.current) {
         pdfViewerRef.current.goToPage(pageNumber);
       }
+    } catch (error) {
+      console.error("Error handling citation click:", error);
     }
   };
 
@@ -5999,6 +6029,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useState,
+  useCallback,
 } from "react";
 import * as pdfjs from "pdfjs-dist";
 
@@ -6036,13 +6067,101 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
     const [error, setError] = useState<string | null>(null);
     const [currentFitMode, setCurrentFitMode] = useState(fitToWidth);
 
+    const calculateScale = useCallback(
+      (
+        viewport: pdfjs.PageViewport,
+        containerWidth: number,
+        containerHeight: number
+      ): number => {
+        if (!currentFitMode) return 1.0;
+
+        // Calculate scale to fit both width and height
+        const widthScale = containerWidth / viewport.width;
+        const heightScale = containerHeight / viewport.height;
+
+        // Use the smaller scale to ensure the page fits in both dimensions
+        const scale = Math.min(widthScale, heightScale);
+
+        // Clamp the scale between 0.1 and maxScale
+        return Math.min(Math.max(scale, 0.1), maxScale);
+      },
+      [currentFitMode, maxScale]
+    );
+
+    const renderPage = useCallback(
+      async (pageNumber: number) => {
+        if (
+          !pdfDocumentRef.current ||
+          !containerRef.current ||
+          !canvasContainerRef.current
+        )
+          return;
+
+        try {
+          setIsLoading(true);
+          setError(null);
+
+          const page = await pdfDocumentRef.current.getPage(pageNumber);
+          const container = containerRef.current;
+          const canvasContainer = canvasContainerRef.current;
+
+          // Get the container dimensions
+          const containerWidth = container.clientWidth - 40; // Account for padding
+          const containerHeight = container.clientHeight - 40; // Account for padding
+
+          // Get viewport with default scale first
+          const viewport = page.getViewport({ scale: 1.0 });
+
+          // Calculate appropriate scale to fit
+          const scale = calculateScale(
+            viewport,
+            containerWidth,
+            containerHeight
+          );
+          const scaledViewport = page.getViewport({ scale });
+
+          // Create canvas
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d")!;
+          canvas.height = scaledViewport.height;
+          canvas.width = scaledViewport.width;
+
+          // Clear container and append canvas
+          canvasContainer.innerHTML = "";
+          canvasContainer.appendChild(canvas);
+
+          // Center the canvas in the container
+          canvas.style.display = "block";
+          canvas.style.margin = "0 auto";
+
+          // Render page
+          await page.render({
+            canvasContext: context,
+            viewport: scaledViewport,
+          }).promise;
+
+          // Update current page and notify parent
+          currentPageRef.current = pageNumber;
+          onPageChange?.(pageNumber);
+        } catch (error) {
+          console.error("Error rendering page:", error);
+          setError(
+            `خطأ في عرض الصفحة: ${error instanceof Error ? error.message : String(error)}`
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      },
+      [calculateScale, setIsLoading, setError, onPageChange]
+    );
+
     // Update fit mode when prop changes
     useEffect(() => {
       setCurrentFitMode(fitToWidth);
       if (pdfDocumentRef.current) {
         renderPage(currentPageRef.current);
       }
-    }, [fitToWidth]);
+    }, [fitToWidth, renderPage]);
 
     // Expose goToPage method via ref
     useImperativeHandle(ref, () => ({
@@ -6052,84 +6171,6 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
         }
       },
     }));
-
-    const calculateScale = (
-      viewport: pdfjs.PageViewport,
-      containerWidth: number,
-      containerHeight: number
-    ): number => {
-      if (!currentFitMode) return 1.0;
-
-      // Calculate scale to fit both width and height
-      const widthScale = containerWidth / viewport.width;
-      const heightScale = containerHeight / viewport.height;
-
-      // Use the smaller scale to ensure the page fits in both dimensions
-      const scale = Math.min(widthScale, heightScale);
-
-      // Clamp the scale between 0.1 and maxScale
-      return Math.min(Math.max(scale, 0.1), maxScale);
-    };
-
-    const renderPage = async (pageNumber: number) => {
-      if (
-        !pdfDocumentRef.current ||
-        !containerRef.current ||
-        !canvasContainerRef.current
-      )
-        return;
-
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const page = await pdfDocumentRef.current.getPage(pageNumber);
-        const container = containerRef.current;
-        const canvasContainer = canvasContainerRef.current;
-
-        // Get the container dimensions
-        const containerWidth = container.clientWidth - 40; // Account for padding
-        const containerHeight = container.clientHeight - 40; // Account for padding
-
-        // Get viewport with default scale first
-        const viewport = page.getViewport({ scale: 1.0 });
-
-        // Calculate appropriate scale to fit
-        const scale = calculateScale(viewport, containerWidth, containerHeight);
-        const scaledViewport = page.getViewport({ scale });
-
-        // Create canvas
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d")!;
-        canvas.height = scaledViewport.height;
-        canvas.width = scaledViewport.width;
-
-        // Clear container and append canvas
-        canvasContainer.innerHTML = "";
-        canvasContainer.appendChild(canvas);
-
-        // Center the canvas in the container
-        canvas.style.display = "block";
-        canvas.style.margin = "0 auto";
-
-        // Render page
-        await page.render({
-          canvasContext: context,
-          viewport: scaledViewport,
-        }).promise;
-
-        // Update current page and notify parent
-        currentPageRef.current = pageNumber;
-        onPageChange?.(pageNumber);
-      } catch (error) {
-        console.error("Error rendering page:", error);
-        setError(
-          `خطأ في عرض الصفحة: ${error instanceof Error ? error.message : String(error)}`
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
 
     useEffect(() => {
       if (!pdfUrl) return;
@@ -6174,7 +6215,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
           pdfDocumentRef.current = null;
         }
       };
-    }, [pdfUrl, initialPage]);
+    }, [pdfUrl, initialPage, renderPage]);
 
     // Handle window resize
     useEffect(() => {
@@ -6195,7 +6236,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
         window.removeEventListener("resize", debouncedResize);
         clearTimeout(timeoutId);
       };
-    }, []);
+    }, [renderPage]);
 
     // Handle keyboard navigation
     useEffect(() => {
@@ -6219,7 +6260,7 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
 
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, []);
+    }, [renderPage]);
 
     if (error) {
       return (
@@ -6281,12 +6322,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { Toggle } from "@/components/ui/toggle";
-import { ChevronRight, FileText, Hash } from "lucide-react";
-import {
-  parseCitations,
-  groupCitationsByFile,
-  CitationSummary,
-} from "@/utils/citationParser";
+import { FileText, Hash } from "lucide-react";
+import { parseCitations, groupCitationsByFile } from "@/utils/citationParser";
 
 interface SourcesProps {
   sessionId: string;
@@ -6331,7 +6368,7 @@ export default function Sources({
   );
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
-    pdfMeta?.fileId ? { fileId: pdfMeta.fileId } : "skip"
+    pdfMeta?.fileId ? { fileId: pdfMeta.fileId as Id<"_storage"> } : "skip"
   );
 
   // Query messages to extract citations
@@ -6739,7 +6776,6 @@ type SendPDFFn = (args: {
   fileSize: number;
   pageCount: number;
 }) => Promise<string>;
-type ProcessPDFFn = (args: { pdfId: string }) => Promise<void>;
 
 const words = "الإدارة العامة للذكاء الإصطناعي وتطوير الأعمال";
 function TextGenerateEffectDemo() {
@@ -6751,9 +6787,7 @@ export default function App() {
   const generateUploadUrl = useMutation(api.files.mutations.generateUploadUrl);
   const sendPDF = useMutation(api.pdf.mutations.savePdfMetadata);
   // const processWithMultipleOcrMutation = useMutation(api.ocr.actions.processWithMultipleOcrMutation);
-  const workflowOrchMutation = useMutation(
-    api.workflowOrch.workflowOrchMutation
-  );
+
   const [selectedPDF, setSelectedPDF] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -7389,102 +7423,125 @@ export default function MinimalistProgressBar({
 // File Path: src/app/pdf/[storageId]/components/OcrProgressStepper.tsx
 
 // src/app/pdf/[storageId]/components/OcrProgressStepper.tsx
-import React from 'react';
-import { CheckCircle, Clock, Loader2 } from 'lucide-react';
+import React from "react";
+import { CheckCircle, Clock, Loader2 } from "lucide-react";
 
-export type OcrStep = 'uploaded' | 'processing' | 'streaming' | 'completed';
+export type OcrStep = "uploaded" | "processing" | "streaming" | "completed";
 
 interface OcrStepInfo {
+  key: OcrStep;
   label: string;
   icon: React.ReactNode;
-  status: 'completed' | 'current' | 'pending';
+  status: "completed" | "current" | "pending";
 }
 
 interface OcrProgressStepperProps {
   currentStep: OcrStep;
-  modelType: 'gemini' | 'replicate';
+  modelType: "gemini" | "replicate";
 }
 
-export default function OcrProgressStepper({ currentStep, modelType }: OcrProgressStepperProps) {
+export default function OcrProgressStepper({
+  currentStep,
+  modelType,
+}: OcrProgressStepperProps) {
   // Define steps for the OCR process
   const steps: Record<OcrStep, string> = {
-    uploaded: 'تم رفع الملف',
-    processing: 'جاري معالجة النص',
-    streaming: 'جاري تحسين النص',
-    completed: 'اكتمل'
+    uploaded: "تم رفع الملف",
+    processing: "جاري معالجة النص",
+    streaming: "جاري تحسين النص",
+    completed: "اكتمل",
   };
 
   // Create the step information array with status
-  const stepInfo = Object.entries(steps).map(([key, label]) => {
-    let status: 'completed' | 'current' | 'pending';
-    
+  const stepInfo: OcrStepInfo[] = Object.entries(steps).map(([key, label]) => {
+    let status: "completed" | "current" | "pending";
+
     if (key === currentStep) {
-      status = 'current';
+      status = "current";
     } else if (
-      (key === 'uploaded' && ['processing', 'streaming', 'completed'].includes(currentStep)) ||
-      (key === 'processing' && ['streaming', 'completed'].includes(currentStep)) ||
-      (key === 'streaming' && currentStep === 'completed')
+      (key === "uploaded" &&
+        ["processing", "streaming", "completed"].includes(currentStep)) ||
+      (key === "processing" &&
+        ["streaming", "completed"].includes(currentStep)) ||
+      (key === "streaming" && currentStep === "completed")
     ) {
-      status = 'completed';
+      status = "completed";
     } else {
-      status = 'pending';
+      status = "pending";
     }
 
     return {
-      key,
+      key: key as OcrStep,
       label,
       status,
-      icon: status === 'completed' ? (
-        <CheckCircle className="w-6 h-6 text-green-500" />
-      ) : status === 'current' ? (
-        <Loader2 className="w-6 h-6 text-white animate-spin" />
-      ) : (
-        <Clock className="w-6 h-6 text-white/40" />
-      )
+      icon:
+        status === "completed" ? (
+          <CheckCircle className="w-6 h-6 text-green-500" />
+        ) : status === "current" ? (
+          <Loader2 className="w-6 h-6 text-white animate-spin" />
+        ) : (
+          <Clock className="w-6 h-6 text-white/40" />
+        ),
     };
-  }) as OcrStepInfo[];
+  });
 
   // Colors for model type
   const colorClasses = {
-    gemini: 'from-blue-600 to-blue-800', // Blue for Gemini
-    replicate: 'from-purple-600 to-purple-800' // Purple for Replicate
+    gemini: "from-blue-600 to-blue-800", // Blue for Gemini
+    replicate: "from-purple-600 to-purple-800", // Purple for Replicate
   };
 
   return (
     <div className="mb-4">
-      <div className={`rounded-lg border border-white/20 p-3 bg-gradient-to-r ${colorClasses[modelType]} backdrop-blur-md shadow-lg`}>
+      <div
+        className={`rounded-lg border border-white/20 p-3 bg-gradient-to-r ${colorClasses[modelType]} backdrop-blur-md shadow-lg`}
+      >
         <h3 className="text-base font-medium mb-3 text-white text-right">
-          {modelType === 'gemini' ? 'نموذج مغلق المصدر (جيميني)' : 'نموذج مفتوح المصدر (ريبليكت)'}
+          {modelType === "gemini"
+            ? "نموذج مغلق المصدر (جيميني)"
+            : "نموذج مفتوح المصدر (ريبليكت)"}
         </h3>
-        
+
         <div className="flex items-center justify-between">
           {stepInfo.map((step, index) => (
             <React.Fragment key={step.key}>
               {/* Step circle with icon */}
               <div className="flex flex-col items-center">
-                <div className={`rounded-full w-10 h-10 flex items-center justify-center border-2 ${
-                  step.status === 'completed' ? 'border-green-500 bg-green-500/20' : 
-                  step.status === 'current' ? 'border-white bg-white/20' : 
-                  'border-white/40 bg-white/10'
-                }`}>
+                <div
+                  className={`rounded-full w-10 h-10 flex items-center justify-center border-2 ${
+                    step.status === "completed"
+                      ? "border-green-500 bg-green-500/20"
+                      : step.status === "current"
+                        ? "border-white bg-white/20"
+                        : "border-white/40 bg-white/10"
+                  }`}
+                >
                   {step.icon}
                 </div>
-                <span className={`text-xs mt-1 whitespace-nowrap ${
-                  step.status === 'completed' ? 'text-green-300' : 
-                  step.status === 'current' ? 'text-white' : 
-                  'text-white/40'
-                }`}>
+                <span
+                  className={`text-xs mt-1 whitespace-nowrap ${
+                    step.status === "completed"
+                      ? "text-green-300"
+                      : step.status === "current"
+                        ? "text-white"
+                        : "text-white/40"
+                  }`}
+                >
                   {step.label}
                 </span>
               </div>
-              
+
               {/* Connector line between steps */}
               {index < stepInfo.length - 1 && (
-                <div className={`h-0.5 flex-1 mx-1 ${
-                  stepInfo[index + 1].status === 'completed' || 
-                  stepInfo[index].status === 'completed' && stepInfo[index + 1].status === 'current' ? 
-                  'bg-green-500' : 'bg-white/30'
-                }`} />
+                <div
+                  className={`h-0.5 flex-1 mx-1 ${
+                    stepInfo[index + 1].status === "completed" ||
+                    (stepInfo[index].status === "completed" &&
+                      stepInfo[index + 1].status === "current")
+                      ? "bg-green-500"
+                      : "bg-white/30"
+                  }`}
+                />
               )}
             </React.Fragment>
           ))}
@@ -7493,6 +7550,7 @@ export default function OcrProgressStepper({ currentStep, modelType }: OcrProgre
     </div>
   );
 }
+
 
 
 // File Path: src/app/pdf/[storageId]/components/OpenAICleanedSection.tsx
@@ -7859,110 +7917,127 @@ export default function OCRfile({
 
 // File Path: src/app/pdf/[storageId]/page.tsx
 
-'use client'
+"use client";
 
-import React, { useState, useEffect } from 'react'
-import { redirect, useParams } from 'next/navigation'
-import { useQuery } from 'convex/react'
-import { Id } from '../../../../convex/_generated/dataModel'
-import { api } from '../../../../convex/_generated/api'
-import { streamClean } from './streamClean'
-import OCRfile from './OCRfile'
-import PdfPreviewSection from './components/pdfPreviewSection'
-import GlassmorphicProgressStepper, { OcrStep } from './components/GlassmorphicProgressStepper'
-
-// Import navigation components for FE-02
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
+import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import { useQuery } from "convex/react";
+import { Id } from "../../../../convex/_generated/dataModel";
+import { api } from "../../../../convex/_generated/api";
+import { streamClean } from "./streamClean";
+import OCRfile from "./OCRfile";
+import PdfPreviewSection from "./components/pdfPreviewSection";
+import GlassmorphicProgressStepper, {
+  OcrStep,
+} from "./components/GlassmorphicProgressStepper";
 
 export default function PdfView() {
   // Extract the dynamic segment directly
-  const params = useParams()
-  const jobId = params.storageId as Id<'pdfs'>
-
-  // redirect(`/pdf/${jobId}/pages`);  
+  const params = useParams<{ storageId?: string }>();
+  const storageId = params.storageId;
+  if (!storageId) {
+    throw new Error("Missing storageId parameter");
+  }
+  const jobId = storageId as Id<"pdfs">;
+  // redirect(`/pdf/${jobId}/pages`);
 
   // Data-loading hooks
-  const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId })
-  const jobReplicate = useQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId: jobId })
-  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId, source: 'gemini' })
-  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, { pdfId: jobId, source: 'replicate' })
+  const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId });
+  const jobReplicate = useQuery(api.ocr.replicate.queries.getOcrByPdfId, {
+    pdfId: jobId,
+  });
+  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, {
+    pdfId: jobId,
+    source: "gemini",
+  });
+  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, {
+    pdfId: jobId,
+    source: "replicate",
+  });
 
   const [pdfUrl, setPdfUrl] = useState<string>("");
-  
+
   // Initialize state after data is loaded
   const [initialized, setInitialized] = useState(false);
-  
+
   // Track processing state and results
-  const [gBuf, setG] = useState('')
-  const [rBuf, setR] = useState('')
-  const [isLoadingGemini, setIsLoadingGemini] = useState(false)
-  const [isLoadingReplicate, setIsLoadingReplicate] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [gBuf, setG] = useState("");
+  const [rBuf, setR] = useState("");
+  const [isLoadingGemini, setIsLoadingGemini] = useState(false);
+  const [isLoadingReplicate, setIsLoadingReplicate] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Track progress steps - don't set initial value yet
-  const [geminiStep, setGeminiStep] = useState<OcrStep>('uploaded')
-  const [replicateStep, setReplicateStep] = useState<OcrStep>('uploaded')
+  const [geminiStep, setGeminiStep] = useState<OcrStep>("uploaded");
+  const [replicateStep, setReplicateStep] = useState<OcrStep>("uploaded");
 
   // Query the PDF data using the storageId
-  const pdfData = useQuery(api.pdf.queries.getPdf, { 
-    pdfId: jobId
+  const pdfData = useQuery(api.pdf.queries.getPdf, {
+    pdfId: jobId,
   });
- 
+
   // Get the file URL
-  const fileUrl = useQuery(api.files.queries.getFileDownloadUrl, 
-    pdfData?.fileId ? { fileId: pdfData.fileId } : "skip"
+  const fileUrl = useQuery(
+    api.files.queries.getFileDownloadUrl,
+    pdfData?.fileId ? { fileId: pdfData.fileId as Id<"_storage"> } : "skip"
   );
 
   // Initialize state based on query results
   useEffect(() => {
     // Only initialize once all data is available
-    if (!initialized && 
-        job !== undefined && 
-        jobReplicate !== undefined && 
-        openaiGeminiResults !== undefined && 
-        openaiReplicateResults !== undefined) {
-      
+    if (
+      !initialized &&
+      job !== undefined &&
+      jobReplicate !== undefined &&
+      openaiGeminiResults !== undefined &&
+      openaiReplicateResults !== undefined
+    ) {
       console.log("Initializing with data:", {
         geminiStatus: openaiGeminiResults?.[0]?.cleaningStatus,
         replicateStatus: openaiReplicateResults?.[0]?.cleaningStatus,
         geminiOcr: job?.[0]?.ocrStatus,
-        replicateOcr: jobReplicate?.[0]?.ocrStatus
+        replicateOcr: jobReplicate?.[0]?.ocrStatus,
       });
-      
+
       // Set initial Gemini state
-      if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
-        setGeminiStep('completed');
-        setG(openaiGeminiResults[0].cleanedText || '');
+      if (openaiGeminiResults?.[0]?.cleaningStatus === "completed") {
+        setGeminiStep("completed");
+        setG(openaiGeminiResults[0].cleanedText || "");
         console.log("Setting initial Gemini step to completed");
-      } else if (job?.[0]?.ocrStatus === 'completed') {
-        setGeminiStep('streaming');
-      } else if (job?.[0]?.ocrStatus === 'processing') {
-        setGeminiStep('processing');
+      } else if (job?.[0]?.ocrStatus === "completed") {
+        setGeminiStep("streaming");
+      } else if (job?.[0]?.ocrStatus === "processing") {
+        setGeminiStep("processing");
       } else {
-        setGeminiStep('uploaded');
+        setGeminiStep("uploaded");
       }
-      
+
       // Set initial Replicate state
-      if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
-        setR(openaiReplicateResults[0].cleanedText || '');
-        setReplicateStep('completed');
+      if (openaiReplicateResults?.[0]?.cleaningStatus === "completed") {
+        setR(openaiReplicateResults[0].cleanedText || "");
+        setReplicateStep("completed");
         console.log("Setting initial Replicate step to completed");
-      } else if (jobReplicate?.[0]?.ocrStatus === 'completed') {
-        setReplicateStep('streaming');
-      } else if (jobReplicate?.[0]?.ocrStatus === 'processing') {
-        setReplicateStep('processing');
+      } else if (jobReplicate?.[0]?.ocrStatus === "completed") {
+        setReplicateStep("streaming");
+      } else if (jobReplicate?.[0]?.ocrStatus === "processing") {
+        setReplicateStep("processing");
       } else {
-        setReplicateStep('uploaded');
+        setReplicateStep("uploaded");
       }
-      
+
       setInitialized(true);
       console.log("Initialization complete");
     }
-  }, [job, jobReplicate, openaiGeminiResults, openaiReplicateResults, initialized]);
+  }, [
+    job,
+    jobReplicate,
+    openaiGeminiResults,
+    openaiReplicateResults,
+    initialized,
+  ]);
 
-  const gText = gBuf || 'يتم الآن تحليل الملف وتحويله إلى نص'
-  const rText = rBuf || 'يتم الآن تحليل الملف وتحويله إلى نص'
+  const gText = gBuf || "يتم الآن تحليل الملف وتحويله إلى نص";
+  const rText = rBuf || "يتم الآن تحليل الملف وتحويله إلى نص";
 
   // Set PDF URL when file data is available
   useEffect(() => {
@@ -7973,124 +8048,143 @@ export default function PdfView() {
 
   // Handle Gemini OCR processing - only run after initialization and if not already completed
   useEffect(() => {
-    if (!initialized || geminiStep === 'completed') return;
-    
+    if (!initialized || geminiStep === "completed") return;
+
     // If OCR is completed but we don't have results yet, start streaming
-    if (job?.[0]?.ocrStatus === 'completed' && gBuf === "" && !isLoadingGemini) {
+    if (
+      job?.[0]?.ocrStatus === "completed" &&
+      gBuf === "" &&
+      !isLoadingGemini
+    ) {
       console.log("Starting Gemini streaming process");
-      setGeminiStep('streaming');
+      setGeminiStep("streaming");
       setIsLoadingGemini(true);
-      
+
       // Stream clean the results
-      streamClean(
-        jobId as string, 
-        'gemini', 
-        chunk => {
-          setG(chunk);
-          if (chunk.length > 0) {
-            console.log("Gemini stream data received, setting to completed");
-            setGeminiStep('completed');
-          }
+      streamClean(jobId as string, "gemini", (chunk) => {
+        setG(chunk);
+        if (chunk.length > 0) {
+          console.log("Gemini stream data received, setting to completed");
+          setGeminiStep("completed");
         }
-      )
-      .catch(error => {
-        console.error('Error streaming Gemini cleanup:', error);
-        setError(`Failed to process Gemini OCR: ${error.message}`);
       })
-      .finally(() => {
-        setIsLoadingGemini(false);
-      });
+        .catch((error) => {
+          console.error("Error streaming Gemini cleanup:", error);
+          setError(`Failed to process Gemini OCR: ${error.message}`);
+        })
+        .finally(() => {
+          setIsLoadingGemini(false);
+        });
     }
   }, [initialized, job, jobId, gBuf, isLoadingGemini, geminiStep]);
 
   // Handle Replicate OCR processing - only run after initialization and if not already completed
   useEffect(() => {
-    if (!initialized || replicateStep === 'completed') return;
-    
+    if (!initialized || replicateStep === "completed") return;
+
     // If OCR is completed but we don't have results yet, start streaming
-    if (jobReplicate?.[0]?.ocrStatus === 'completed' && rBuf === "" && !isLoadingReplicate) {
+    if (
+      jobReplicate?.[0]?.ocrStatus === "completed" &&
+      rBuf === "" &&
+      !isLoadingReplicate
+    ) {
       console.log("Starting Replicate streaming process");
-      setReplicateStep('streaming');
+      setReplicateStep("streaming");
       setIsLoadingReplicate(true);
-      
+
       // Stream clean the results
-      streamClean(
-        jobId as string, 
-        'replicate', 
-        chunk => {
-          setR(chunk);
-          if (chunk.length > 0) {
-            console.log("Replicate stream data received, setting to completed");
-            setReplicateStep('completed');
-          }
+      streamClean(jobId as string, "replicate", (chunk) => {
+        setR(chunk);
+        if (chunk.length > 0) {
+          console.log("Replicate stream data received, setting to completed");
+          setReplicateStep("completed");
         }
-      )
-      .catch(error => {
-        console.error('Error streaming Replicate cleanup:', error);
-        setError(`Failed to process Replicate OCR: ${error.message}`);
       })
-      .finally(() => {
-        setIsLoadingReplicate(false);
-      });
+        .catch((error) => {
+          console.error("Error streaming Replicate cleanup:", error);
+          setError(`Failed to process Replicate OCR: ${error.message}`);
+        })
+        .finally(() => {
+          setIsLoadingReplicate(false);
+        });
     }
-  }, [initialized, jobReplicate, jobId, rBuf, isLoadingReplicate, replicateStep]);
+  }, [
+    initialized,
+    jobReplicate,
+    jobId,
+    rBuf,
+    isLoadingReplicate,
+    replicateStep,
+  ]);
 
   // Always render with current state
   return (
-    <div 
-      className='flex flex-col md:flex-row items-start justify-center min-h-screen p-4 overflow-y-auto'
+    <div
+      className="flex flex-col md:flex-row items-start justify-center min-h-screen p-4 overflow-y-auto"
       style={{
         backgroundImage: 'url("/background.png")',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
       }}
     >
       {error && (
         <div className="fixed top-4 right-4 bg-red-600/90 backdrop-blur-md text-white px-4 py-2 rounded-lg shadow-lg z-50 max-w-md">
           <div className="flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6 mr-2"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
             <span>{error}</span>
           </div>
         </div>
       )}
-      
+
       <div className="w-full md:w-1/2 mb-4 md:mb-0">
-        <PdfPreviewSection pdfUrl={pdfUrl}/>
+        <PdfPreviewSection pdfUrl={pdfUrl} />
       </div>
-      
+
       <div className="w-full md:w-1/2 pl-0 md:pl-2">
         {/* Gemini OCR section */}
         <div className="mb-6">
-          <GlassmorphicProgressStepper 
-            currentStep={geminiStep} 
-            modelType="gemini" 
+          <GlassmorphicProgressStepper
+            currentStep={geminiStep}
+            modelType="gemini"
           />
           <OCRfile
             textToDisplay={gText}
             closed={true}
-            hide={geminiStep !== 'completed'}
+            hide={geminiStep !== "completed"}
           />
         </div>
 
         {/* Replicate OCR section */}
         <div className="mb-6">
-          <GlassmorphicProgressStepper 
-            currentStep={replicateStep} 
-            modelType="replicate" 
+          <GlassmorphicProgressStepper
+            currentStep={replicateStep}
+            modelType="replicate"
           />
           <OCRfile
             textToDisplay={rText}
             closed={false}
-            hide={replicateStep !== 'completed'}
+            hide={replicateStep !== "completed"}
           />
         </div>
       </div>
     </div>
   );
 }
+
 
 
 // File Path: src/app/pdf/[storageId]/pages/layout.tsx
@@ -8163,7 +8257,7 @@ export default function PagesView() {
   const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
-    pdf?.fileId ? { fileId: pdf.fileId } : "skip"
+    pdf?.fileId ? { fileId: pdf.fileId as Id<"_storage"> } : "skip"
   );
 
   // Get pages data for accordion
@@ -8626,7 +8720,7 @@ export function PageAccordion({
   const { page: currentPage, setPage } = usePdfPage();
   const [openItems, setOpenItems] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const scrollTimeout = useRef<NodeJS.Timeout>();
+  const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
   const isAutoScrolling = useRef(false);
 
   // Keep track of which accordion rows are open
@@ -8669,7 +8763,7 @@ export function PageAccordion({
     return () => {
       clearTimeout(scrollTimeout.current);
     };
-  }, [currentPage]); // Only depend on currentPage, not openItems
+  }, [currentPage, openItems, setOpenItems]); // Only depend on currentPage, not openItems
 
   // Filter pages based on search
   const filteredPages = pages?.filter(
@@ -8700,7 +8794,7 @@ export function PageAccordion({
     status: string
   ): "pending" | "processing" | "completed" | "failed" =>
     ["pending", "processing", "completed", "failed"].includes(status)
-      ? (status as any)
+      ? (status as "pending" | "processing" | "completed" | "failed")
       : "pending";
 
   // Simplified value change handler
@@ -8709,7 +8803,10 @@ export function PageAccordion({
   };
 
   // Handle clicking on page number
-  const handlePageClick = (pageNumber: number, e: React.MouseEvent) => {
+  const handlePageClick = (
+    pageNumber: number,
+    e: React.MouseEvent<HTMLSpanElement>
+  ) => {
     e.stopPropagation();
     e.preventDefault();
     setPage(pageNumber);
@@ -8970,8 +9067,8 @@ export default function ProgressBarOverall({ pdfId }: ProgressBarOverallProps) {
   // Count pages with any cleaned content in the store
   const totalPages = pages.length;
   const completedPages = pages.filter((page) => {
-    const geminiKey = `${page.pageId}_gemini`;
-    const replicateKey = `${page.pageId}_replicate`;
+    const geminiKey = `${page.pageId}_gemini` as keyof typeof chunks;
+    const replicateKey = `${page.pageId}_replicate` as keyof typeof chunks;
     return chunks[geminiKey]?.length > 0 || chunks[replicateKey]?.length > 0;
   }).length;
 
@@ -9007,9 +9104,9 @@ export default function ProgressBarOverall({ pdfId }: ProgressBarOverallProps) {
 
 // File Path: src/components/QRCodePopup.tsx
 
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { X } from 'lucide-react';
+import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
+import { X } from "lucide-react";
 
 interface QRCodePopupProps {
   onClose: () => void;
@@ -9019,43 +9116,45 @@ export default function QRCodePopup({ onClose }: QRCodePopupProps) {
   const [isClosing, setIsClosing] = useState(false);
 
   // Handle QR popup closing animation
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
       onClose();
       setIsClosing(false);
     }, 500); // Match animation duration
-  };
+  }, [onClose]);
 
   // Close on escape key
   useEffect(() => {
     const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         handleClose();
       }
     };
 
-    window.addEventListener('keydown', handleEscKey);
-    return () => window.removeEventListener('keydown', handleEscKey);
-  }, []);
+    window.addEventListener("keydown", handleEscKey);
+    return () => window.removeEventListener("keydown", handleEscKey);
+  }, [handleClose]);
 
   return (
-    <div 
+    <div
       className={`hidden lg:block fixed bottom-6 left-6 bg-white/10 backdrop-blur-md shadow-lg rounded-xl p-4 border border-white/20 ${
-        isClosing ? 'animate-slide-out-left' : 'animate-slide-in-left'
+        isClosing ? "animate-slide-out-left" : "animate-slide-in-left"
       }`}
     >
-      <button 
-        className="absolute top-1 right-1 text-white/80 hover:text-white" 
+      <button
+        className="absolute top-1 right-1 text-white/80 hover:text-white"
         onClick={handleClose}
         aria-label="Close QR code popup"
       >
         <X size={20} />
       </button>
-      <div className="text-white text-sm mb-2 text-center pt-2">امسح الرمز للوصول للتطبيق</div>
+      <div className="text-white text-sm mb-2 text-center pt-2">
+        امسح الرمز للوصول للتطبيق
+      </div>
       <div className="w-32 h-32 relative">
-        <Image 
-          src="/qr-code.png" 
+        <Image
+          src="/qr-code.png"
           alt="QR Code"
           fill
           className="object-contain ml-2"
@@ -9063,7 +9162,8 @@ export default function QRCodePopup({ onClose }: QRCodePopupProps) {
       </div>
     </div>
   );
-} 
+}
+
 
 
 // File Path: src/components/ui/accordion.tsx
@@ -9535,7 +9635,7 @@ export const TextGenerateEffect = ({
         delay: stagger(0.2),
       }
     );
-  }, [scope.current, animate, duration, filter]);
+  }, [animate, duration, filter]);
 
   const renderWords = () => {
     return (
@@ -10006,10 +10106,7 @@ export function isValidCitation(citation: string): boolean {
 /**
  * Convert citations to clickable links in HTML/markdown
  */
-export function makeCitationsClickable(
-  text: string,
-  onCitationClick: (filename: string, pageNumber?: number) => void
-): string {
+export function makeCitationsClickable(text: string): string {
   const citations = parseCitations(text);
   let result = text;
 
@@ -10108,61 +10205,90 @@ export const countPdfPages = (
 
 // File Path: tailwind.config.ts
 
-import type { Config } from 'tailwindcss'
-import typography from '@tailwindcss/typography'
+import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: ["class"],
   future: {
-    // Disable the Oxide compiler to avoid native binding issues
-    unstable_oxide: false
+    // Future configuration options can go here
   },
   content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/**/*.{js,ts,jsx,tsx,mdx}',
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  prefix: "",
   theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
     extend: {
       colors: {
-        // Define your custom colors here
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
-        card: 'var(--card)',
-        'card-foreground': 'var(--card-foreground)',
-        popover: 'var(--popover)',
-        'popover-foreground': 'var(--popover-foreground)',
-        primary: 'var(--primary)',
-        'primary-foreground': 'var(--primary-foreground)',
-        secondary: 'var(--secondary)',
-        'secondary-foreground': 'var(--secondary-foreground)',
-        muted: 'var(--muted)',
-        'muted-foreground': 'var(--muted-foreground)',
-        accent: 'var(--accent)',
-        'accent-foreground': 'var(--accent-foreground)',
-        destructive: 'var(--destructive)',
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
-      },
-      fontFamily: {
-        sans: ['var(--font-ibm-plex-sans-arabic)'],
-        mono: ['var(--font-geist-mono)'],
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
-        xl: 'calc(var(--radius) + 4px)',
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
   },
-  plugins: [
-    typography,
-  ],
-}
+  plugins: [],
+} satisfies Config;
 
-export default config
+export default config;
+
 
 
 // File Path: tsconfig.json
