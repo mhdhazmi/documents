@@ -9,7 +9,7 @@ import PDFViewer, { PDFViewerHandle } from "@/app/components/PDFViewer";
 import { PageAccordion } from "@/components/pageAccordion";
 import ProgressBarOverall from "@/components/ProgressBarOverall";
 import { usePdfPage } from "@/app/pdf/pages/context";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,9 +32,12 @@ export default function PagesView() {
   const pages = useQuery(api.pdf.queries.getPagesByPdf, { pdfId: storageId });
 
   // Handle page changes from PDFViewer
-  const handlePageChange = (pageNumber: number) => {
-    setPage(pageNumber);
-  };
+  const handlePageChange = useCallback(
+    (pageNumber: number) => {
+      setPage(pageNumber);
+    },
+    [setPage]
+  );
 
   // Sync context page changes to PDFViewer
   useEffect(() => {

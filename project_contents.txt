@@ -5162,14 +5162,24 @@ export const httpAction = httpActionGeneric;
 
 // File Path: next.config.ts
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: {
-    useLightningcss: false,  // ← turn off the Rust-based pipeline
+import type { NextConfig } from "next";
+import type { Configuration } from "webpack";
+
+const nextConfig: NextConfig = {
+  experimental: { useLightningcss: false },
+
+  webpack(config: Configuration) {
+    // ← only one param
+    config.resolve = config.resolve ?? {};
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      canvas: false,
+    };
+    return config;
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
 
 
 
@@ -5204,7 +5214,7 @@ module.exports = nextConfig;
     "clsx": "^2.1.1",
     "convex": "^1.23.0",
     "langchain": "^0.3.22",
-    "lightningcss-win32-x64-msvc": "^1.29.3",
+    "lightningcss": "1.30.0",
     "lodash.debounce": "^4.0.8",
     "lucide": "^0.488.0",
     "lucide-react": "^0.488.0",
@@ -5231,6 +5241,7 @@ module.exports = nextConfig;
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/webpack": "^5.28.5",
     "autoprefixer": "^10.4.21",
     "eslint": "^9",
     "eslint-config-next": "15.2.5",
@@ -6031,7 +6042,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import * as pdfjs from "pdfjs-dist";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf";
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
