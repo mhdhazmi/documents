@@ -11,7 +11,6 @@ import ProgressBarOverall from "@/components/ProgressBarOverall";
 import { usePdfPage } from "@/app/pdf/pages/context";
 import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import PdfSummaryAccordion from "../components/PdfSummaryAccordion";
 import ChatWithDocumentPopup from "@/components/ChatWithDocumentPopup";
@@ -21,7 +20,7 @@ export default function PagesView() {
   const storageId = params.storageId as Id<"pdfs">;
   const { page, setPage } = usePdfPage();
   const viewerRef = useRef<PDFViewerHandle>(null);
-  const [isAccordionCollapsed, setIsAccordionCollapsed] = useState(false);
+  const [isAccordionCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Get PDF data
@@ -57,13 +56,8 @@ export default function PagesView() {
     }
   }, [page]);
 
-  // Calculate proportions
-  const accordionWidth = isAccordionCollapsed
-    ? "w-16"
-    : "w-full md:w-[65%] lg:w-[70%]";
-  const pdfWidth = isAccordionCollapsed
-    ? "w-full"
-    : "w-full md:w-[35%] lg:w-[70%]";
+  // Remove unused width calculations for mobile-friendly layout
+  // We now use direct tailwind classes in the markup
 
   // Show skeleton loading state
   if (!pdf || !pages) {
@@ -88,10 +82,10 @@ export default function PagesView() {
           </div>
         </div>
 
-        {/* Skeleton Main Content */}
-        <div className="flex-1 flex gap-1 md:gap-2 p-2 md:p-4 overflow-hidden">
-          {/* Skeleton Accordion Section */}
-          <div className="w-full md:w-[65%] lg:w-[70%] relative">
+        {/* Skeleton Main Content - Stacked on mobile, row on desktop */}
+        <div className="flex-1 flex flex-col md:flex-row gap-2 p-2 md:p-4 overflow-hidden">
+          {/* Skeleton Accordion Section - Top on mobile */}
+          <div className="w-full md:w-[65%] lg:w-[70%] h-2/5 md:h-full relative">
             <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-4 space-y-4">
               {/* Search bar skeleton */}
               <Skeleton className="h-10 w-full bg-white/10" />
@@ -120,14 +114,15 @@ export default function PagesView() {
             </div>
           </div>
 
-          {/* Skeleton Divider */}
+          {/* Skeleton Dividers */}
+          <div className="block md:hidden h-px w-full bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent my-1"></div>
           <div className="hidden md:block w-px bg-gradient-to-t from-transparent via-emerald-500/50 to-transparent" />
 
-          {/* Skeleton PDF Viewer Section */}
-          <div className="w-full md:w-[35%] lg:w-[30%] relative">
+          {/* Skeleton PDF Viewer Section - Bottom on mobile */}
+          <div className="w-full md:w-[35%] lg:w-[30%] h-3/5 md:h-full relative">
             <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 flex items-center justify-center">
               <div className="text-center space-y-4">
-                <Skeleton className="h-96 w-full bg-white/10" />
+                <Skeleton className="h-full w-full max-h-96 bg-white/10" />
                 <Skeleton className="h-4 w-24 mx-auto bg-white/10" />
               </div>
             </div>
@@ -165,14 +160,14 @@ export default function PagesView() {
         </div>
       </motion.div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex gap-1 md:gap-2 p-2 md:p-4 overflow-hidden">
-        {/* Accordion Section */}
+      {/* Main Content Area - Flex column on mobile, row on desktop */}
+      <div className="flex-1 flex flex-col md:flex-row gap-2 p-2 md:p-4 overflow-hidden">
+        {/* Accordion Section - Full width on top for mobile */}
         <motion.div
-          initial={{ x: -100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className={`transition-all duration-300 ${accordionWidth} relative`}
+          className={`transition-all duration-300 w-full md:w-[65%] lg:w-[70%] h-2/5 md:h-full relative`}
         >
           <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden">
             {!isAccordionCollapsed && (
@@ -208,29 +203,19 @@ export default function PagesView() {
                 />
               </div>
             )}
-            {/* Collapse/Expand Button */}
-            {/* <button
-              onClick={() => setIsAccordionCollapsed(!isAccordionCollapsed)}
-              className="absolute -right-3 top-1/2 -translate-y-1/2 bg-emerald-600/90 hover:bg-emerald-600 text-white p-2 rounded-full backdrop-blur-sm transition-colors z-10 shadow-lg"
-            >
-              {isAccordionCollapsed ? (
-                <ChevronRight className="h-4 w-10 " />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </button> */}
           </div>
         </motion.div>
 
-        {/* Divider with gradient */}
+        {/* Horizontal divider for mobile, vertical for desktop */}
+        <div className="block md:hidden h-px w-full bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent my-1"></div>
         <div className="hidden md:block w-px bg-gradient-to-t from-transparent via-emerald-500/50 to-transparent" />
 
-        {/* PDF Viewer Section */}
+        {/* PDF Viewer Section - Full width on bottom for mobile */}
         <motion.div
-          initial={{ x: 100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className={`transition-all duration-300 ${pdfWidth} relative`}
+          className={`transition-all duration-300 w-full md:w-[35%] lg:w-[30%] h-3/5 md:h-full relative`}
         >
           <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden relative">
             <PDFViewer

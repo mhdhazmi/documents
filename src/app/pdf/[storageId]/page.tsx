@@ -19,7 +19,8 @@ export default function PdfView() {
   const params = useParams<{ storageId?: string }>();
   const storageId = params.storageId;
   if (!storageId) {
-    throw new Error("Missing storageId parameter");
+    console.error("Missing storageId parameter");
+    return <div>Missing storageId parameter</div>;
   }
   const jobId = storageId as Id<"pdfs">;
 
