@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Id } from "../../../convex/_generated/dataModel";
-import { usePageStream, selectChunk } from "@/store/pageStreams";
+import { usePageStream } from "@/store/pageStreams";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -18,8 +18,8 @@ export default React.memo(function StreamedTextBox({ pageId, src }: StreamedText
   // Get the chunks directly from the store
   const { chunks: allChunks } = usePageStream();
   const key = `${pageId}_${src}`;
-  // Extract the specific chunk we need
-  const chunks = allChunks[key] || "";
+  // Extract the specific chunk we need - use type assertion to handle string key
+  const chunks = allChunks[key as keyof typeof allChunks] || "";
 
   // Get cleaning status for this page
   const pageResults = useQuery(
@@ -38,8 +38,21 @@ export default React.memo(function StreamedTextBox({ pageId, src }: StreamedText
   );
 
   const isCompleted = cleaningResults?.cleaningStatus === "completed";
-  const hasText = chunks && chunks.length > 0;
   const ocrStatus = pageResults?.ocrResults?.ocrStatus;
+
+  // Check if we have fullText directly from the database
+  const fullText = cleaningResults?.fullText;
+  const instantLoad = isCompleted && fullText;
+  
+  // Determine if we have text to display - either from streaming or from stored fullText
+  const displayText = chunks || (instantLoad ? fullText : "");
+  const hasDisplayableText = !!displayText && displayText.length > 0;
+
+  // Add a data source tag for debugging
+  let dataSource = "";
+  if (hasDisplayableText) {
+    dataSource = chunks && chunks.length > 0 ? "(via stream)" : "(via stored text)";
+  }
 
   // Determine status icon and message
   let statusIcon;
@@ -51,7 +64,7 @@ export default React.memo(function StreamedTextBox({ pageId, src }: StreamedText
   } else if (ocrStatus === "failed") {
     statusIcon = <AlertCircle className="w-4 h-4 text-red-400" />;
     statusMessage = "فشلت المعالجة";
-  } else if (ocrStatus === "completed" && !hasText) {
+  } else if (ocrStatus === "completed" && !hasDisplayableText) {
     statusIcon = <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
     statusMessage = "جاري تنقيح النص...";
   } else if (ocrStatus === "processing") {
@@ -68,17 +81,20 @@ export default React.memo(function StreamedTextBox({ pageId, src }: StreamedText
       <div className="flex items-center gap-2 text-xs text-white/70">
         {statusIcon}
         <span>{statusMessage}</span>
+        {process.env.NODE_ENV === 'development' && hasDisplayableText && (
+          <span className="ml-2 text-xs text-gray-400">{dataSource}</span>
+        )}
       </div>
 
       {/* Text Content */}
-      {!hasText && !isCompleted ? (
+      {!hasDisplayableText && !isCompleted ? (
         <div className="min-h-[100px] flex items-center justify-center bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4">
           <TypingIndicator />
         </div>
       ) : (
         <div className="overflow-hidden">
           <pre className="min-h-[100px] max-h-[250px] overflow-y-auto text-white/90 bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4 text-right font-sans text-xl whitespace-pre-wrap leading-relaxed">
-            {chunks || "في انتظار المعالجة..."}
+            {displayText || "في انتظار المعالجة..."}
           </pre>
         </div>
       )}

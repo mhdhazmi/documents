@@ -7,13 +7,22 @@ export async function streamCleanPage(
   console.log(`Starting stream cleaning for ${src} OCR of page ${pageId}`);
   
   try {
-    const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL.replace("convex.cloud", "convex.site")}/cleanPage`, {
+    // Make sure we have a valid Convex URL
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!convexUrl) {
+      throw new Error('NEXT_PUBLIC_CONVEX_URL is not defined');
+    }
+    
+    // Ensure pageId is a string (in case it's passed as an Id object)
+    const pageIdStr = pageId.toString();
+    
+    const resp = await fetch(`${convexUrl.replace("convex.cloud", "convex.site")}/cleanPage`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Origin": window.location.origin
+        "Origin": window.location.origin 
       },
-      body: JSON.stringify({ pageId, source: src }),
+      body: JSON.stringify({ pageId: pageIdStr, source: src }),
     });
 
     if (!resp.ok) {
@@ -58,14 +67,13 @@ export async function streamCleanPage(
     // Final update
     onChunk(fullText);
     console.log(`Completed stream cleaning for ${src} OCR of page ${pageId}`);
-  } catch (error) {
+  } catch (err) {
+    const error = err as Error;
     console.error(`Stream clean error for ${src} OCR of page ${pageId}:`, error);
-    if (onError && error instanceof Error) {
+    if (onError) {
       onError(error);
-    } else if (error instanceof Error) {
-      throw error;
     } else {
-      throw new Error(String(error));
+      throw error;
     }
   }
 }

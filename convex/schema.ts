@@ -15,35 +15,7 @@ export default defineSchema({
     processingError: v.optional(v.string()),
   }),
 
-  geminiOcrResults: defineTable({
-    pdfId: v.id("pdfs"),
-    extractedText: v.optional(v.string()),
-    processedAt: v.number(),
-    ocrStatus: v.union(
-      v.literal("processing"),
-      v.literal("completed"),
-      v.literal("failed")
-    ),
-  }).index("by_pdf_id", ["pdfId"]),
-
-  replicateOcrResults: defineTable({
-    pdfId: v.id("pdfs"),
-    extractedText: v.optional(v.string()),
-    processedAt: v.number(),
-    ocrStatus: v.union(
-      v.literal("processing"),
-      v.literal("completed"),
-      v.literal("failed")
-    ),
-  }).index("by_pdf_id", ["pdfId"]),
-
-  openaiOcrResults: defineTable({
-    pdfId: v.id("pdfs"),
-    cleanedText: v.string(),
-    processedAt: v.number(),
-    cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
-    source: v.union(v.literal("gemini"), v.literal("replicate")),
-  }).index("by_pdf_id", ["pdfId"]),
+  // Legacy tables removed (geminiOcrResults, replicateOcrResults, openaiOcrResults)
 
   chunks: defineTable({
     pdfId: v.id("pdfs"),
@@ -98,9 +70,12 @@ export default defineSchema({
     width: v.optional(v.number()),
     height: v.optional(v.number()),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    isPriority: v.optional(v.boolean()), // New field for priority processing
   })
     .index("byPdfId", ["pdfId"])
-    .index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"]),
+    .index("byPdfIdAndPageNumber", ["pdfId", "pageNumber"])
+    .index("byPriority", ["isPriority"]), // New index for querying priority pages
 
   geminiPageOcr: defineTable({
     pageId: v.id("pages"),
@@ -126,7 +101,8 @@ export default defineSchema({
 
   openaiCleanedPage: defineTable({
     pageId: v.id("pages"),
-    cleanedText: v.string(),
+    cleanedText: v.string(),        // Will continue to hold text, but only for compatibility
+    fullText: v.optional(v.string()), // Added field to store the complete text content
     processedAt: v.number(),
     cleaningStatus: v.union(v.literal("started"), v.literal("completed")),
     source: v.union(v.literal("gemini"), v.literal("replicate")),

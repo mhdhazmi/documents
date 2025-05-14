@@ -4,8 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
-import { Toggle } from "@/components/ui/toggle";
-import { FileText, Hash } from "lucide-react";
+import { FileText } from "lucide-react";
 import { parseCitations, groupCitationsByFile } from "@/utils/citationParser";
 
 interface SourcesProps {
@@ -110,69 +109,71 @@ export default function Sources({
     }
   };
 
-  // Render toggle buttons for each PDF source with page references
+  // Render toggle buttons for each PDF source with page references in a wrapped grid layout
   return (
     <div className="mb-4 animate-in fade-in duration-300">
-      <div className="space-y-2">
-        {sourceInfos.map((sourceInfo) => (
-          <div
-            key={sourceInfo.pdfId.toString()}
-            className="border-l-2 border-emerald-700/30 pl-2"
-          >
-            {/* PDF Toggle Button */}
-            <Toggle
-              pressed={selectedPdfId === sourceInfo.pdfId}
-              onPressedChange={() => {
-                setSelectedPdfId(sourceInfo.pdfId);
-                setSelectedPageNumber(null); // Reset page selection
-              }}
-              variant="outline"
-              className="bg-emerald-950 border-emerald-700/90 text-white/80 h-8 justify-start gap-2
-                data-[state=on]:bg-emerald-600/50 data-[state=on]:text-white 
-                transition-colors duration-200"
+      <h3 className="text-white/80 text-sm mb-2 font-medium text-right">المصادر</h3>
+      <div className="rounded-lg p-2">
+        <div className="flex flex-row-reverse flex-wrap gap-2 justify-center">
+          {sourceInfos.map((sourceInfo) => (
+            <div
+              key={sourceInfo.pdfId.toString()}
+              className={`bg-emerald-950/80 rounded-lg p-2 border transition-all duration-300
+                ${selectedPdfId === sourceInfo.pdfId 
+                  ? 'border-emerald-500/70 shadow-md shadow-emerald-900/30 scale-100' 
+                  : 'border-emerald-700/30 scale-95 hover:scale-100 hover:border-emerald-600/50'}`}
+              style={{ minWidth: '120px', maxWidth: '180px' }}
+              title={`${sourceInfo.filename} ${selectedPdfId === sourceInfo.pdfId ? '(مختار)' : ''}`}
             >
-              <FileText className="w-3 h-3" />
-              <span className="truncate max-w-[150px]">
-                {sourceInfo.filename.replace(/\.[^/.]+$/, "")}
-              </span>
-            </Toggle>
+              {/* PDF Button */}
+              <button
+                onClick={() => {
+                  setSelectedPdfId(sourceInfo.pdfId);
+                  setSelectedPageNumber(null); // Reset page selection
+                }}
+                className={`flex items-center justify-end gap-1 px-2 h-8 w-full rounded-md
+                  transition-all duration-200 text-white/80 border border-emerald-700/30
+                  ${selectedPdfId === sourceInfo.pdfId 
+                    ? "bg-emerald-600/50 text-white" 
+                    : "bg-emerald-950 hover:bg-emerald-900/50"}`}
+                dir="rtl"
+              >
+                <span className="truncate max-w-[120px]">
+                  {sourceInfo.filename.replace(/\.[^/.]+$/, "")}
+                </span>
+                <FileText className="w-3 h-3 flex-shrink-0" />
+              </button>
 
-            {/* Page Reference Buttons */}
-            {selectedPdfId === sourceInfo.pdfId &&
-              sourceInfo.pageRefs.size > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1 ml-6">
-                  {Array.from(sourceInfo.pageRefs)
-                    .sort((a, b) => a - b)
-                    .map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        onClick={() => handlePageSelect(pageNum)}
-                        className={`px-2 py-1 text-xs rounded transition-colors ${
-                          selectedPageNumber === pageNum
-                            ? "bg-emerald-600 text-white"
-                            : "bg-emerald-950/50 text-white/70 hover:bg-emerald-700/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-1">
-                          <Hash className="w-2 h-2" />
+              {/* Page Reference Buttons - Show when PDF is selected, no sliding animation */}
+              <div className={`overflow-hidden transition-opacity duration-200
+                ${selectedPdfId === sourceInfo.pdfId ? 'opacity-100 mt-2' : 'hidden opacity-0'}`}>
+                {sourceInfo.pageRefs.size > 0 && (
+                  <div className="flex flex-wrap gap-1 justify-center mt-1" dir="rtl">
+                    {Array.from(sourceInfo.pageRefs)
+                      .sort((a, b) => a - b)
+                      .map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          onClick={() => handlePageSelect(pageNum)}
+                          className={`w-7 h-7 text-xs rounded-full transition-colors flex items-center justify-center ${
+                            selectedPageNumber === pageNum
+                              ? "bg-emerald-600 text-white"
+                              : "bg-emerald-950/90 text-white/70 hover:bg-emerald-700/50"
+                          }`}
+                          title={`صفحة ${pageNum}`}
+                        >
                           {pageNum}
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              )}
-          </div>
-        ))}
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Citation Format Example (for testing) */}
-      {selectedPdfId && selectedPageNumber && (
-        <div className="mt-2 text-xs text-white/50 border-t border-white/10 pt-2">
-          Citation: (
-          {sourceInfos.find((s) => s.pdfId === selectedPdfId)?.filename}, p.{" "}
-          {selectedPageNumber})
-        </div>
-      )}
+      
     </div>
   );
 }

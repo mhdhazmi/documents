@@ -5,13 +5,13 @@ import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { api } from "../../../../convex/_generated/api";
-import { streamClean } from "./streamClean";
 import OCRfile from "./OCRfile";
 import PdfPreviewSection from "./components/pdfPreviewSection";
 import GlassmorphicProgressStepper, {
   OcrStep,
 } from "./components/GlassmorphicProgressStepper";
-import PdfSummarySection from "./components/PdfSummarySection";
+import { useProgressiveOcr } from "./hooks/useProgressiveOcr";
+import ProgressBarOverall from "../../../components/ProgressBarOverall";
 
 export default function PdfView() {
   // Extract the dynamic segment directly
@@ -21,37 +21,21 @@ export default function PdfView() {
     throw new Error("Missing storageId parameter");
   }
   const jobId = storageId as Id<"pdfs">;
-  // redirect(`/pdf/${jobId}/pages`);
 
-  // Data-loading hooks
-  const job = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId: jobId });
-  const jobReplicate = useQuery(api.ocr.replicate.queries.getOcrByPdfId, {
-    pdfId: jobId,
-  });
-  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, {
-    pdfId: jobId,
-    source: "gemini",
-  });
-  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, {
-    pdfId: jobId,
-    source: "replicate",
-  });
+  // Use the new progressive OCR hook
+  const {
+    geminiText,
+    replicateText,
+    isGeminiProcessing,
+    isReplicateProcessing,
+    completionPercentage,
+    error
+  } = useProgressiveOcr(jobId);
 
-  const [pdfUrl, setPdfUrl] = useState<string>("");
-
-  // Initialize state after data is loaded
-  const [initialized, setInitialized] = useState(false);
-
-  // Track processing state and results
-  const [gBuf, setG] = useState("");
-  const [rBuf, setR] = useState("");
-  const [isLoadingGemini, setIsLoadingGemini] = useState(false);
-  const [isLoadingReplicate, setIsLoadingReplicate] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Track progress steps - don't set initial value yet
+  // Track progress steps - derive from the processing state
   const [geminiStep, setGeminiStep] = useState<OcrStep>("uploaded");
   const [replicateStep, setReplicateStep] = useState<OcrStep>("uploaded");
+  const [pdfUrl, setPdfUrl] = useState<string>("");
 
   // Query the PDF data using the storageId
   const pdfData = useQuery(api.pdf.queries.getPdf, {
@@ -64,62 +48,38 @@ export default function PdfView() {
     pdfData?.fileId ? { fileId: pdfData.fileId as Id<"_storage"> } : "skip"
   );
 
-  // Initialize state based on query results
+  // Update the progress steps based on the OCR processing state
   useEffect(() => {
-    // Only initialize once all data is available
-    if (
-      !initialized &&
-      job !== undefined &&
-      jobReplicate !== undefined &&
-      openaiGeminiResults !== undefined &&
-      openaiReplicateResults !== undefined
-    ) {
-      console.log("Initializing with data:", {
-        geminiStatus: openaiGeminiResults?.[0]?.cleaningStatus,
-        replicateStatus: openaiReplicateResults?.[0]?.cleaningStatus,
-        geminiOcr: job?.[0]?.ocrStatus,
-        replicateOcr: jobReplicate?.[0]?.ocrStatus,
-      });
-
-      // Set initial Gemini state
-      if (openaiGeminiResults?.[0]?.cleaningStatus === "completed") {
-        setGeminiStep("completed");
-        setG(openaiGeminiResults[0].cleanedText || "");
-        console.log("Setting initial Gemini step to completed");
-      } else if (job?.[0]?.ocrStatus === "completed") {
+    // Gemini step determination
+    if (isGeminiProcessing) {
+      if (geminiText && geminiText !== 'جاري تحليل المستند...') {
         setGeminiStep("streaming");
-      } else if (job?.[0]?.ocrStatus === "processing") {
+      } else {
         setGeminiStep("processing");
+      }
+    } else {
+      if (geminiText && geminiText !== 'جاري تحليل المستند...') {
+        setGeminiStep("completed");
       } else {
         setGeminiStep("uploaded");
       }
+    }
 
-      // Set initial Replicate state
-      if (openaiReplicateResults?.[0]?.cleaningStatus === "completed") {
-        setR(openaiReplicateResults[0].cleanedText || "");
-        setReplicateStep("completed");
-        console.log("Setting initial Replicate step to completed");
-      } else if (jobReplicate?.[0]?.ocrStatus === "completed") {
+    // Replicate step determination
+    if (isReplicateProcessing) {
+      if (replicateText && replicateText !== 'جاري تحليل المستند...') {
         setReplicateStep("streaming");
-      } else if (jobReplicate?.[0]?.ocrStatus === "processing") {
+      } else {
         setReplicateStep("processing");
+      }
+    } else {
+      if (replicateText && replicateText !== 'جاري تحليل المستند...') {
+        setReplicateStep("completed");
       } else {
         setReplicateStep("uploaded");
       }
-
-      setInitialized(true);
-      console.log("Initialization complete");
     }
-  }, [
-    job,
-    jobReplicate,
-    openaiGeminiResults,
-    openaiReplicateResults,
-    initialized,
-  ]);
-
-  const gText = gBuf || "يتم الآن تحليل الملف وتحويله إلى نص";
-  const rText = rBuf || "يتم الآن تحليل الملف وتحويله إلى نص";
+  }, [geminiText, replicateText, isGeminiProcessing, isReplicateProcessing]);
 
   // Set PDF URL when file data is available
   useEffect(() => {
@@ -127,77 +87,6 @@ export default function PdfView() {
       setPdfUrl(fileUrl);
     }
   }, [fileUrl]);
-
-  // Handle Gemini OCR processing - only run after initialization and if not already completed
-  useEffect(() => {
-    if (!initialized || geminiStep === "completed") return;
-
-    // If OCR is completed but we don't have results yet, start streaming
-    if (
-      job?.[0]?.ocrStatus === "completed" &&
-      gBuf === "" &&
-      !isLoadingGemini
-    ) {
-      console.log("Starting Gemini streaming process");
-      setGeminiStep("streaming");
-      setIsLoadingGemini(true);
-
-      // Stream clean the results
-      streamClean(jobId as string, "gemini", (chunk) => {
-        setG(chunk);
-        if (chunk.length > 0) {
-          console.log("Gemini stream data received, setting to completed");
-          setGeminiStep("completed");
-        }
-      })
-        .catch((error) => {
-          console.error("Error streaming Gemini cleanup:", error);
-          setError(`Failed to process Gemini OCR: ${error.message}`);
-        })
-        .finally(() => {
-          setIsLoadingGemini(false);
-        });
-    }
-  }, [initialized, job, jobId, gBuf, isLoadingGemini, geminiStep]);
-
-  // Handle Replicate OCR processing - only run after initialization and if not already completed
-  useEffect(() => {
-    if (!initialized || replicateStep === "completed") return;
-
-    // If OCR is completed but we don't have results yet, start streaming
-    if (
-      jobReplicate?.[0]?.ocrStatus === "completed" &&
-      rBuf === "" &&
-      !isLoadingReplicate
-    ) {
-      console.log("Starting Replicate streaming process");
-      setReplicateStep("streaming");
-      setIsLoadingReplicate(true);
-
-      // Stream clean the results
-      streamClean(jobId as string, "replicate", (chunk) => {
-        setR(chunk);
-        if (chunk.length > 0) {
-          console.log("Replicate stream data received, setting to completed");
-          setReplicateStep("completed");
-        }
-      })
-        .catch((error) => {
-          console.error("Error streaming Replicate cleanup:", error);
-          setError(`Failed to process Replicate OCR: ${error.message}`);
-        })
-        .finally(() => {
-          setIsLoadingReplicate(false);
-        });
-    }
-  }, [
-    initialized,
-    jobReplicate,
-    jobId,
-    rBuf,
-    isLoadingReplicate,
-    replicateStep,
-  ]);
 
   // Always render with current state
   return (
@@ -232,11 +121,16 @@ export default function PdfView() {
         </div>
       )}
 
-      <div className="w-full md:w-1/2 mb-4 md:mb-0">
+      {/* Overall Processing Progress */}
+      <div className="fixed top-4 left-4 right-4 z-50">
+        <ProgressBarOverall percentage={completionPercentage} />
+      </div>
+
+      <div className="w-full md:w-1/2 mb-4 md:mb-0 mt-12">
         <PdfPreviewSection pdfUrl={pdfUrl} />
       </div>
 
-      <div className="w-full md:w-1/2 pl-0 md:pl-2">
+      <div className="w-full md:w-1/2 pl-0 md:pl-2 mt-12">
         {/* Gemini OCR section */}
         <div className="mb-6">
           <GlassmorphicProgressStepper
@@ -244,9 +138,9 @@ export default function PdfView() {
             modelType="gemini"
           />
           <OCRfile
-            textToDisplay={gText}
+            textToDisplay={geminiText || "يتم الآن تحليل المستند..."}
             closed={true}
-            hide={geminiStep !== "completed"}
+            hide={geminiStep !== "completed" && geminiStep !== "streaming"}
           />
         </div>
 
@@ -257,9 +151,9 @@ export default function PdfView() {
             modelType="replicate"
           />
           <OCRfile
-            textToDisplay={rText}
+            textToDisplay={replicateText || "يتم الآن تحليل المستند..."}
             closed={false}
-            hide={replicateStep !== "completed"}
+            hide={replicateStep !== "completed" && replicateStep !== "streaming"}
           />
         </div>
       </div>

@@ -9,8 +9,9 @@ export const concatenateAndEmbedWorkflow = workflow.define({
     pdfId: v.id("pdfs"),
     preferredSource: v.optional(v.union(v.literal("gemini"), v.literal("replicate"))),
     retryCount: v.optional(v.number()),
+    earlyProcessing: v.optional(v.boolean()),
   },
-  handler: async (step, { pdfId, preferredSource, retryCount = 0 }): Promise<void> => {
+  handler: async (step, { pdfId, preferredSource, retryCount = 0, earlyProcessing = false }): Promise<void> => {
     try {
       // 1. Get all pages for this PDF
       const pages = await step.runQuery(
@@ -101,7 +102,7 @@ export const concatenateAndEmbedWorkflow = workflow.define({
         return;
       }
       
-      console.log(`All pages complete for PDF ${pdfId} using ${completeSource} source`);
+      console.log(`All pages complete for PDF ${pdfId} using ${completeSource} source - concatenateWorkflow will handle embedding (exclusively)`);
       
       // 3. Concatenate the text for all pages in order
       const concatenatedText = await step.runQuery(
@@ -117,18 +118,27 @@ export const concatenateAndEmbedWorkflow = workflow.define({
         { name: `SaveConcatenated-${pdfId}` }
       );
       
+      // Check if chunks already exist (to ensure idempotency)
+      const chunkStats = await step.runQuery(
+        internal.ingest.ingest.getChunkStats,
+        { pdfId },
+        { name: `GetChunkStats-${pdfId}` }
+      );
+      
       // 5 & 6: Start both embedding and summary generation in parallel
       // This avoids waiting for embedding to complete before starting summary
       await Promise.all([
-        // Start the embedding process
-        step.runAction(
-          api.ingest.ingest.chunkAndEmbed,
-          { pdfId },
-          { 
-            retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
-            name: `ChunkAndEmbed-${pdfId}` 
-          }
-        ),
+        // Start the embedding process only if not already done (ensures idempotency)
+        (chunkStats.total === 0 || chunkStats.withEmbeddings < chunkStats.total) ? 
+          step.runAction(
+            api.ingest.ingest.chunkAndEmbed,
+            { pdfId },
+            { 
+              retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
+              name: `ChunkAndEmbed-${pdfId}` 
+            }
+          ) : 
+          Promise.resolve(console.log(`Skipping chunk/embed for PDF ${pdfId} as chunks already exist (${chunkStats.withEmbeddings}/${chunkStats.total})`)),
         
         // Generate a summary of the PDF content (in parallel)
         step.runMutation(
@@ -151,6 +161,7 @@ export const startConcatenateWorkflow = internalMutation({
     pdfId: v.id("pdfs"),
     preferredSource: v.optional(v.union(v.literal("gemini"), v.literal("replicate"))),
     retryCount: v.optional(v.number()),
+    earlyProcessing: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await workflow.start(
@@ -159,7 +170,8 @@ export const startConcatenateWorkflow = internalMutation({
       { 
         pdfId: args.pdfId,
         preferredSource: args.preferredSource,
-        retryCount: args.retryCount ?? 0
+        retryCount: args.retryCount ?? 0,
+        earlyProcessing: args.earlyProcessing ?? false
       },
     );
   },

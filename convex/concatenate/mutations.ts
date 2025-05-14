@@ -9,34 +9,18 @@ export const saveConcatenatedText = internalMutation({
     text: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if we already have concatenated results for this PDF and source
-    const existing = await ctx.db
-      .query("openaiOcrResults")
-      .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId))
-      .filter((q) => q.eq(q.field("source"), args.source))
-      .first();
-    
-    if (existing) {
-      // Update existing record
-      await ctx.db.patch(existing._id, {
-        cleanedText: args.text,
-        cleaningStatus: "completed",
-        processedAt: Date.now(),
-      });
-    } else {
-      // Create new record
-      await ctx.db.insert("openaiOcrResults", {
-        pdfId: args.pdfId,
-        cleanedText: args.text,
-        cleaningStatus: "completed",
-        processedAt: Date.now(),
-        source: args.source,
-      });
-    }
+    // Legacy openaiOcrResults table has been removed
+    // We now only need to update the PDF status directly
     
     // Update the PDF status to indicate processing is complete
     await ctx.db.patch(args.pdfId, {
       status: "processed",
     });
+    
+    // Note: The concatenated text is now only used for summarization and embedding
+    // We don't need to store it permanently in a separate table
+    // If needed, it should be stored in pdfSummaries or implemented with a new table
+    
+    console.log(`Concatenated text for ${args.pdfId} (${args.source}) processed - PDF marked as processed`);
   },
 });

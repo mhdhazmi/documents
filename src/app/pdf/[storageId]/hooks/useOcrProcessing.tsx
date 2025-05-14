@@ -1,11 +1,11 @@
 // First, let's create a custom hook for OCR processing
 
 // src/app/pdf/[storageId]/hooks/useOcrProcessing.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { Id } from '../../../../../convex/_generated/dataModel';
-import { streamClean } from '../streamClean';
+import { streamCleanPage } from '../streamCleanPage';
 
 export interface OcrState {
   geminiText: string;
@@ -17,97 +17,149 @@ export interface OcrState {
 
 export function useOcrProcessing(pdfId: Id<'pdfs'>) {
   const [state, setState] = useState<OcrState>({
-    geminiText: '',
-    replicateText: '',
-    isGeminiProcessing: false,
-    isReplicateProcessing: false,
+    geminiText: 'جاري تحليل المستند...',  // Start with loading message
+    replicateText: 'جاري تحليل المستند...', // Start with loading message
+    isGeminiProcessing: true,  // Assume processing from the beginning
+    isReplicateProcessing: true, // Assume processing from the beginning
     error: null
   });
 
-  // Fetch OCR results for Gemini and Replicate
-  const geminiJobStatus = useQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId });
-  const replicateJobStatus = useQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId });
+  // Track if we've already started streaming
+  const geminiStreamStarted = useRef(false);
+  const replicateStreamStarted = useRef(false);
   
-  // Fetch cleaned results if they exist
-  const openaiGeminiResults = useQuery(api.ocr.openai.queries.getCleanedId, { 
-    pdfId, 
-    source: 'gemini' 
-  });
-  const openaiReplicateResults = useQuery(api.ocr.openai.queries.getCleanedId, { 
-    pdfId, 
-    source: 'replicate' 
-  });
-
-  // Process Gemini results
+  // Track if component is mounted to prevent state updates after unmount
+  const isMounted = useRef(true);
   useEffect(() => {
-    // Only run once when status changes to completed and text is empty
-    if (geminiJobStatus?.[0]?.ocrStatus === 'completed' && !state.geminiText && !state.isGeminiProcessing) {
+    return () => { isMounted.current = false; };
+  }, []);
+
+  // Fetch page and OCR statuses - prioritize first page results
+  const pages = useQuery(api.pdf.queries.getPdfPages, { pdfId });
+  const firstPageId = pages?.[0]?._id;
+  
+  // Get first page OCR status
+  const firstPageGeminiStatus = useQuery(
+    api.ocr.gemini.queries.getPageOcrResults,
+    firstPageId ? { pageId: firstPageId } : "skip"
+  );
+  
+  const firstPageReplicateStatus = useQuery(
+    api.ocr.replicate.queries.getPageOcrResults,
+    firstPageId ? { pageId: firstPageId } : "skip"
+  );
+  
+  // Get first page cleaned results
+  const firstPageGeminiCleaned = useQuery(
+    api.ocr.openai.queries.getPageCleanedResults,
+    firstPageId ? { pageId: firstPageId, source: 'gemini' } : "skip"
+  );
+  
+  const firstPageReplicateCleaned = useQuery(
+    api.ocr.openai.queries.getPageCleanedResults,
+    firstPageId ? { pageId: firstPageId, source: 'replicate' } : "skip"
+  );
+  
+  // Start streaming OCR results as soon as possible
+  useEffect(() => {
+    // Don't start if already started or if component unmounted
+    if (geminiStreamStarted.current || !isMounted.current || !firstPageId) return;
+    
+    // Start streaming if first page OCR is completed
+    const canStartGemini = (firstPageGeminiStatus?.ocrResults?.ocrStatus === 'completed');
+    
+    if (canStartGemini) {
+      geminiStreamStarted.current = true;
       setState(prev => ({ ...prev, isGeminiProcessing: true }));
       
-      // Check if cleaned results already exist
-      if (openaiGeminiResults?.[0]?.cleaningStatus === 'completed') {
+      // Check if cleaned results already exist first
+      if (firstPageGeminiCleaned?.cleanedText) {
         setState(prev => ({ 
           ...prev, 
-          geminiText: openaiGeminiResults[0].cleanedText,
+          geminiText: firstPageGeminiCleaned.cleanedText,
           isGeminiProcessing: false 
         }));
       } else {
-        // Stream clean the results
-        streamClean(
-          pdfId as string, 
+        // Stream clean the results immediately using streamCleanPage
+        streamCleanPage(
+          firstPageId,
           'gemini', 
-          chunk => setState(prev => ({ ...prev, geminiText: chunk }))
+          chunk => {
+            if (isMounted.current) {
+              setState(prev => ({ ...prev, geminiText: chunk }));
+            }
+          }
         )
         .catch(error => {
-          console.error('Error streaming Gemini cleanup:', error);
-          setState(prev => ({ 
-            ...prev, 
-            error: `Failed to process Gemini OCR: ${error.message}`,
-            isGeminiProcessing: false 
-          }));
+          console.error('Error streaming Gemini page cleanup:', error);
+          if (isMounted.current) {
+            setState(prev => ({ 
+              ...prev, 
+              error: `Failed to process Gemini page OCR: ${error.message}`,
+              isGeminiProcessing: false 
+            }));
+          }
         })
         .finally(() => {
-          setState(prev => ({ ...prev, isGeminiProcessing: false }));
+          if (isMounted.current) {
+            setState(prev => ({ ...prev, isGeminiProcessing: false }));
+          }
         });
       }
     }
-  }, [geminiJobStatus, openaiGeminiResults, pdfId, state.geminiText, state.isGeminiProcessing]);
+  }, [firstPageGeminiStatus, firstPageGeminiCleaned, firstPageId]);
 
-  // Process Replicate results (same pattern)
+  // Replicate processing - similar approach
   useEffect(() => {
-    if (replicateJobStatus?.[0]?.ocrStatus === 'completed' && !state.replicateText && !state.isReplicateProcessing) {
+    if (replicateStreamStarted.current || !isMounted.current || !firstPageId) return;
+    
+    // Start streaming if first page OCR is completed
+    const canStartReplicate = (firstPageReplicateStatus?.ocrResults?.ocrStatus === 'completed');
+    
+    if (canStartReplicate) {
+      replicateStreamStarted.current = true;
       setState(prev => ({ ...prev, isReplicateProcessing: true }));
       
-      if (openaiReplicateResults?.[0]?.cleaningStatus === 'completed') {
+      // Check if cleaned results already exist first
+      if (firstPageReplicateCleaned?.cleanedText) {
         setState(prev => ({ 
           ...prev, 
-          replicateText: openaiReplicateResults[0].cleanedText,
+          replicateText: firstPageReplicateCleaned.cleanedText,
           isReplicateProcessing: false 
         }));
       } else {
-        streamClean(
-          pdfId as string, 
+        // Stream clean the results immediately using streamCleanPage
+        streamCleanPage(
+          firstPageId,
           'replicate', 
-          chunk => setState(prev => ({ ...prev, replicateText: chunk }))
+          chunk => {
+            if (isMounted.current) {
+              setState(prev => ({ ...prev, replicateText: chunk }));
+            }
+          }
         )
         .catch(error => {
-          console.error('Error streaming Replicate cleanup:', error);
-          setState(prev => ({ 
-            ...prev, 
-            error: `Failed to process Replicate OCR: ${error.message}`,
-            isReplicateProcessing: false 
-          }));
+          console.error('Error streaming Replicate page cleanup:', error);
+          if (isMounted.current) {
+            setState(prev => ({ 
+              ...prev, 
+              error: `Failed to process Replicate page OCR: ${error.message}`,
+              isReplicateProcessing: false 
+            }));
+          }
         })
         .finally(() => {
-          setState(prev => ({ ...prev, isReplicateProcessing: false }));
+          if (isMounted.current) {
+            setState(prev => ({ ...prev, isReplicateProcessing: false }));
+          }
         });
       }
     }
-  }, [replicateJobStatus, openaiReplicateResults, pdfId, state.replicateText, state.isReplicateProcessing]);
+  }, [firstPageReplicateStatus, firstPageReplicateCleaned, firstPageId]);
 
   return {
-    geminiText: state.geminiText || 'يتم الآن تحليل الملف وتحويله إلى نص',
-    replicateText: state.replicateText || 'يتم الآن تحليل الملف وتحويله إلى نص',
+    geminiText: state.geminiText,
+    replicateText: state.replicateText,
     isGeminiProcessing: state.isGeminiProcessing,
     isReplicateProcessing: state.isReplicateProcessing,
     error: state.error

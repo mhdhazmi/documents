@@ -8,9 +8,10 @@ export const providerWorkflow = workflow.define({
   args: {
     pageId: v.id("pages"),
     provider: v.union(v.literal("gemini"), v.literal("replicate")),
+    priority: v.optional(v.union(v.literal("high"), v.literal("normal"), v.literal("low"))),
   },
 
-  handler: async (step, { pageId, provider }): Promise<void> => {
+  handler: async (step, { pageId, provider, priority = "normal" }): Promise<void> => {
     // 1. OCR with the chosen provider
     if (provider === "gemini") {
       await step.runAction(
@@ -42,14 +43,9 @@ export const providerWorkflow = workflow.define({
       }
     );
 
-    // 3. NEW: Trigger chunkAndEmbed orchestration check
-    await step.runAction(
-      api.ingest.ingest.triggerChunkAndEmbedFromPageCleaning,
-      { pageId, source: provider },
-      {
-        name: `TriggerOrchestration-${provider}-${pageId}`,
-      }
-    );
+    // Step 3 (triggerChunkAndEmbedFromPageCleaning) has been removed to avoid duplicate embedding
+    // The concatenateWorkflow will handle embedding exclusively after a provider completes
+    // This ensures chunking and embedding happens exactly once per PDF
   },
 });
 
@@ -57,12 +53,13 @@ export const kickoffproviderWorkflow = internalMutation({
   args: {
     pageId: v.id("pages"),
     provider: v.union(v.literal("gemini"), v.literal("replicate")),
+    priority: v.optional(v.union(v.literal("high"), v.literal("normal"), v.literal("low"))),
   },
-  handler: async (ctx, { pageId, provider }) => {
+  handler: async (ctx, { pageId, provider, priority = "normal" }) => {
     await workflow.start(
       ctx,
       internal.workflow.providerWorkflow.providerWorkflow,
-      { pageId, provider }
+      { pageId, provider, priority }
     );
   },
 });

@@ -48,7 +48,6 @@ export const savePdfMetadata = mutation({
 
 
 
-
 // Add this to the existing mutations file
 export const savePdfPage = internalMutation({
   args: {
@@ -66,7 +65,29 @@ export const savePdfPage = internalMutation({
       width: args.width,
       height: args.height,
       createdAt: Date.now(),
+      isPriority: args.pageNumber === 1, // First page is automatically a priority page
     });
+  },
+});
+
+// New mutation to mark a page as priority for processing
+export const markPageAsPriority = internalMutation({
+  args: {
+    pageId: v.id("pages"),
+    isPriority: v.boolean(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const page = await ctx.db.get(args.pageId);
+    if (!page) {
+      throw new Error(`Page not found for ID: ${args.pageId}`);
+    }
+    
+    await ctx.db.patch(args.pageId, {
+      isPriority: args.isPriority,
+      updatedAt: Date.now(),
+    });
+    
+    console.log(`Marked page ${args.pageId} isPriority=${args.isPriority}`);
   },
 });
 
@@ -173,6 +194,4 @@ export const generatePdfSummary = mutation({
     return summaryId;
   },
 });
-
-
 

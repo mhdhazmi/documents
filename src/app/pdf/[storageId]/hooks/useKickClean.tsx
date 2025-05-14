@@ -38,21 +38,49 @@ export function useKickClean({ pageId, src }: UseKickCleanProps) {
     { pageId }
   );
   
+  // Additionally, check for cleaned results with fullText
+  const cleanedResults = useQuery(
+    api.ocr.openai.queries.getPageCleanedResults,
+    { pageId, source: src }
+  );
+  
   // Extract only what we need from the query result
   const ocrStatus = ocrResults?.ocrResults?.ocrStatus;
+  const fullText = cleanedResults?.fullText;
+  const cleaningStatus = cleanedResults?.cleaningStatus;
 
-  // Use effect with ref to track if we've already started the process
+  // Use effect to handle pre-existing fullText
   useEffect(() => {
-    // Only proceed if OCR is complete, we don't have text yet, and we're not already processing
+    // If we have fullText stored in the database and cleaning is completed,
+    // use it directly without streaming
+    if (
+      fullText && 
+      cleaningStatus === "completed" && 
+      !hasChunk && 
+      !isInFlight
+    ) {
+      console.log(`Using stored fullText for ${src} clean of page ${pageId}`);
+      setChunk(key, fullText);
+    }
+  }, [key, pageId, fullText, cleaningStatus, hasChunk, isInFlight, src, setChunk]);
+
+  // Use effect to handle streaming for cases without fullText
+  useEffect(() => {
+    // Only proceed if:
+    // 1. OCR is complete
+    // 2. We don't have the text in our state
+    // 3. We're not already processing
+    // 4. We don't have stored fullText (this is the key addition)
     const ocrCompleted = ocrStatus === "completed";
+    const needsStreaming = ocrCompleted && !hasChunk && !isInFlight && !fullText;
     
-    if (ocrCompleted && !hasChunk && !isInFlight) {
+    if (needsStreaming) {
       // Mark as processing
       markInFlight(key);
-      console.log(`Triggering ${src} clean for page ${pageId}`);
+      console.log(`Triggering ${src} clean for page ${pageId} via streaming`);
 
       // Start the streaming process
-      streamCleanPage(pageId, src, (chunk) => {
+      streamCleanPage(pageId.toString(), src, (chunk) => {
         setChunk(key, chunk);
       })
         .catch((error) => {
@@ -67,6 +95,7 @@ export function useKickClean({ pageId, src }: UseKickCleanProps) {
     pageId,
     src,
     ocrStatus,
+    fullText,
     hasChunk,
     isInFlight,
     markInFlight,

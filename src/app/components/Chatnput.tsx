@@ -1,37 +1,72 @@
 "use client"
-import { Send } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '../../../convex/_generated/api';
 import { useMutation } from 'convex/react';
 import { Id } from '../../../convex/_generated/dataModel';
-import { ChangeEvent, KeyboardEvent } from 'react';
+import { ChangeEvent, KeyboardEvent, useState } from 'react';
 
 export default function ChatInput({ input, setInput, setMessages, sessionId }: 
   { 
     input: string, 
     setInput: (input: string) => void, 
-    setMessages: React.Dispatch<React.SetStateAction<string[]>>, 
+    setMessages: React.Dispatch<React.SetStateAction<any[]>>, 
     sessionId: string 
   }) {
 
   const saveMessage = useMutation(api.serve.serve.saveMessage);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSendMessage = async (): Promise<void> => {
-    if (input.trim() === '') return;
+    if (input.trim() === '' || isSubmitting) return;
     
-    // Add user message to the chat
+    // Add user message to the chat optimistically
     const userMessage = input;
+    const timestamp = Date.now();
     
-    setMessages(prevMessages => [...prevMessages, userMessage]);
-    await saveMessage({
-      message: userMessage,
-      sessionId: sessionId as Id<"chatSessions">,
-      isUser: true,
-    });
+    // Show optimistic update immediately
+    setMessages(prevMessages => [
+      ...prevMessages, 
+      { 
+        id: `temp-${timestamp}`,
+        text: userMessage, 
+        isUser: true,
+        timestamp: timestamp,
+        sessionId
+      }
+    ]);
     
+    // Add empty assistant message with loading state
+    setMessages(prevMessages => [
+      ...prevMessages,
+      {
+        id: `temp-assistant-${timestamp}`,
+        text: "",
+        isUser: false,
+        timestamp: timestamp + 1,
+        sessionId
+      }
+    ]);
+    
+    // Clear input immediately for better UX
     setInput('');
-  }
+    setIsSubmitting(true);
+    
+    try {
+      // Send to server
+      await saveMessage({
+        message: userMessage,
+        sessionId: sessionId as Id<"chatSessions">,
+        isUser: true,
+      });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      // Could add error handling here if needed
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
     
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -50,14 +85,19 @@ export default function ChatInput({ input, setInput, setMessages, sessionId }:
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
         rows={3}
+        disabled={isSubmitting}
       />
       <div className="absolute left-3 inset-y-0 flex items-center">
         <Button variant="ghost"
           className="p-1.5 rounded-full bg-emerald-600 text-white h-8 w-8 flex items-center justify-center"
           onClick={handleSendMessage}
-          disabled={input.trim() === ''}
+          disabled={input.trim() === '' || isSubmitting}
         >
-          <Send size={15} />
+          {isSubmitting ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <Send size={15} />
+          )}
         </Button>
       </div>
     </div>

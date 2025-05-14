@@ -41,7 +41,6 @@ import type * as workflow_index from "../workflow/index.js";
 import type * as workflow_ocrWorkflow from "../workflow/ocrWorkflow.js";
 import type * as workflow_providerWorkflow from "../workflow/providerWorkflow.js";
 import type * as workflow_startWorkflow from "../workflow/startWorkflow.js";
-import type * as workflowOrch from "../workflowOrch.js";
 
 import type {
   ApiFromModules,
@@ -91,7 +90,6 @@ declare const fullApi: ApiFromModules<{
   "workflow/ocrWorkflow": typeof workflow_ocrWorkflow;
   "workflow/providerWorkflow": typeof workflow_providerWorkflow;
   "workflow/startWorkflow": typeof workflow_startWorkflow;
-  workflowOrch: typeof workflowOrch;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 

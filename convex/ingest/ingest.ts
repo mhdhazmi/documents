@@ -53,39 +53,11 @@ export const createChunks = internalMutation({
     console.log(`Found ${pdfPages.size} cleaned pages for PDF ${arg.pdfId}`);
 
     if (pdfPages.size === 0) {
-      console.log("No cleaned pages found, trying whole-PDF approach...");
-
-      // Fallback to whole-PDF chunks for backward compatibility
-      const pdfTextId = await ctx.db
-        .query("openaiOcrResults")
-        .withIndex("by_pdf_id", (q) => q.eq("pdfId", arg.pdfId))
-        .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
-        .first();
-
-      if (!pdfTextId?.cleanedText) {
-        console.log("No cleaned text available for chunking");
-        return;
-      }
-
-      // Create document-level chunks with pageId: null
-      const splitter = RecursiveCharacterTextSplitter.fromLanguage("markdown", {
-        chunkSize: embeddingConfig.chunking.chunkSize,
-        chunkOverlap: embeddingConfig.chunking.chunkOverlap,
-      });
-
-      const chunks = await splitter.splitText(pdfTextId.cleanedText);
-      await asyncMap(chunks, async (chunk) => {
-        await ctx.db.insert("chunks", {
-          pdfId: arg.pdfId,
-          pageId: null, // Document-level chunk
-          text: chunk,
-          embeddingId: null,
-        });
-      });
-
-      console.log(
-        `Created ${chunks.length} document-level chunks for PDF ${arg.pdfId}`
-      );
+      console.log("No cleaned pages found for this PDF");
+      
+      // The legacy openaiOcrResults table has been removed
+      // No fallback is possible anymore - we rely entirely on page-level processing
+      console.log("PDF pages must be processed before chunking is possible");
       return;
     }
 
@@ -314,13 +286,34 @@ export const chunkAndEmbed = action({
         pdfId: Id<"pdfs">;
         source: "gemini" | "replicate";
         timestamp: number;
+        status: string;
       }
     | undefined
   > => {
-    // ✅ Added explicit return type
     console.log(`Starting chunkAndEmbed orchestration for PDF: ${args.pdfId}`);
 
     try {
+      // First check if embedding is already complete to avoid duplicate work
+      const chunkStats = await ctx.runQuery(internal.ingest.ingest.getChunkStats, { 
+        pdfId: args.pdfId 
+      });
+      
+      // If we already have full embedding, skip the process
+      if (chunkStats.total > 0 && chunkStats.withEmbeddings === chunkStats.total) {
+        console.log(
+          `Skipping chunking/embedding for PDF ${args.pdfId} - already complete ` +
+          `(${chunkStats.withEmbeddings}/${chunkStats.total} chunks embedded)`
+        );
+        // Use gemini as default source for type safety
+        return {
+          success: true,
+          pdfId: args.pdfId,
+          source: "gemini", // Default to gemini for type safety
+          timestamp: Date.now(),
+          status: "already_completed"
+        };
+      }
+      
       // ① Wait until *all* pages are cleaned
       // We'll check both Gemini and Replicate sources
       const geminiReady: boolean = await ctx.runQuery(
@@ -345,7 +338,7 @@ export const chunkAndEmbed = action({
       const readySource: "gemini" | "replicate" = geminiReady
         ? "gemini"
         : "replicate";
-      console.log(`All pages ready for PDF ${args.pdfId} using ${readySource}`);
+      console.log(`All pages complete for PDF ${args.pdfId} using ${readySource}`);
 
       // ② Create/update chunks
       console.log(`Creating chunks for PDF ${args.pdfId}...`);
@@ -369,6 +362,7 @@ export const chunkAndEmbed = action({
         pdfId: args.pdfId,
         source: readySource,
         timestamp: Date.now(),
+        status: "processing_started"
       };
     } catch (error) {
       console.error(
@@ -397,12 +391,11 @@ export const triggerChunkAndEmbedFromPageCleaning = action({
     source: v.union(v.literal("gemini"), v.literal("replicate")),
   },
   handler: async (ctx, args): Promise<void> => {
-    // ✅ Added explicit return type
-    console.log(
-      `Page cleaning completed for page ${args.pageId}, checking if PDF is ready...`
-    );
+    // This function has been refactored to be a no-op to avoid duplicate embedding triggers
+    // It remains as a function for backward compatibility
+    // The concatenateWorkflow now exclusively handles chunking and embedding
 
-    // Get the PDF ID from the page
+    // Get the PDF ID from the page for logging purposes
     const page = await ctx.runQuery(api.pdf.queries.getPdfPage, {
       pageId: args.pageId,
     });
@@ -412,24 +405,13 @@ export const triggerChunkAndEmbedFromPageCleaning = action({
       return;
     }
 
-    // Check if all pages for this PDF are now ready
-    const allReady = await ctx.runQuery(
-      internal.concatenate.queries.areAllPagesComplete,
-      { pdfId: page.pdfId, source: args.source }
+    console.log(
+      `[DEPRECATED] Page cleaning completed for page ${args.pageId} ` +
+      `(PDF: ${page.pdfId}) - no action taken as embedding is now handled exclusively by concatenateWorkflow`
     );
-
-    if (allReady) {
-      console.log(
-        `All pages ready for PDF ${page.pdfId}, triggering chunkAndEmbed...`
-      );
-
-      // Trigger the orchestration
-      await ctx.runAction(api.ingest.ingest.chunkAndEmbed, {
-        pdfId: page.pdfId,
-      });
-    } else {
-      console.log(`Not all pages ready yet for PDF ${page.pdfId}, waiting...`);
-    }
+    
+    // No action taken - this avoids duplicate embedding triggers
+    // The concatenateWorkflow.ts will handle embedding through its workflow
   },
 });
 

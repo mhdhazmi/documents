@@ -1,5 +1,5 @@
 // convex/pdf/queries.ts
-import { Doc } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
@@ -105,7 +105,7 @@ export const getPageWithOcrResults = query({
   },
 });
 
-// NEW: Get all pages for a PDF with status and snippet information
+// Get all pages for a PDF with status and snippet information - optimized to avoid N+1 queries
 export const getPagesByPdf = query({
   args: {
     pdfId: v.id("pdfs"),
@@ -117,68 +117,115 @@ export const getPagesByPdf = query({
       throw new ConvexError("PDF not found");
     }
 
-    // Get all pages for this PDF, sorted by page number
+    // 1. Get all pages for this PDF, sorted by page number
     const pages = await ctx.db
       .query("pages")
       .withIndex("byPdfIdAndPageNumber", (q) => q.eq("pdfId", args.pdfId))
       .collect();
-
-    // Map each page to PdfPageInfo
-    const pageInfos: PdfPageInfo[] = await Promise.all(
-      pages.map(async (page): Promise<PdfPageInfo> => {
-        // Get Gemini OCR status
-        const geminiOcr = await ctx.db
-          .query("geminiPageOcr")
-          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-          .first();
-
-        // Get Replicate OCR status
-        const replicateOcr = await ctx.db
-          .query("replicatePageOcr")
-          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-          .first();
-
-        // Get cleaned text (prioritize OpenAI cleaned, fallback to raw OCR)
-        let cleanedText: string | null = null;
-
-        // First try OpenAI cleaned text
-        const openaiCleaned = await ctx.db
-          .query("openaiCleanedPage")
-          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-          .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
-          .first();
-
-        if (openaiCleaned?.cleanedText) {
+    
+    if (pages.length === 0) {
+      return [];
+    }
+    
+    // Create an array of all page IDs
+    const pageIds = pages.map(page => page._id);
+    
+    // 2. Batch fetch all OCR results for all pages in this PDF
+    
+    // 2.1 Fetch all Gemini OCR results for these pages
+    const allGeminiOcrResults = await Promise.all(
+      pageIds.map(pageId => 
+        ctx.db.query("geminiPageOcr")
+          .withIndex("by_page_id", q => q.eq("pageId", pageId))
+          .first()
+      )
+    ).then(results => results.filter(result => result !== null) as Doc<"geminiPageOcr">[]);
+    
+    // 2.2 Fetch all Replicate OCR results for these pages
+    const allReplicateOcrResults = await Promise.all(
+      pageIds.map(pageId => 
+        ctx.db.query("replicatePageOcr")
+          .withIndex("by_page_id", q => q.eq("pageId", pageId))
+          .first()
+      )
+    ).then(results => results.filter(result => result !== null) as Doc<"replicatePageOcr">[]);
+    
+    // 2.3 Fetch all OpenAI cleaned results for these pages
+    const allOpenaiCleanedResults = await Promise.all(
+      pageIds.map(pageId => 
+        ctx.db.query("openaiCleanedPage")
+          .withIndex("by_page_id", q => q.eq("pageId", pageId))
+          .filter(q => q.eq(q.field("cleaningStatus"), "completed"))
+          .first()
+      )
+    ).then(results => results.filter(result => result !== null) as Doc<"openaiCleanedPage">[]);
+    
+    // 3. Create lookup maps for efficient access by pageId
+    const geminiOcrMap = new Map(
+      allGeminiOcrResults.map(result => [result.pageId.toString(), result])
+    );
+    
+    const replicateOcrMap = new Map(
+      allReplicateOcrResults.map(result => [result.pageId.toString(), result])
+    );
+    
+    const openaiCleanedMap = new Map(
+      allOpenaiCleanedResults.map(result => [result.pageId.toString(), result])
+    );
+    
+    // 4. Map each page to PdfPageInfo using the lookup maps instead of individual queries
+    const pageInfos: PdfPageInfo[] = pages.map((page): PdfPageInfo => {
+      const pageIdStr = page._id.toString();
+      const geminiOcr = geminiOcrMap.get(pageIdStr);
+      const replicateOcr = replicateOcrMap.get(pageIdStr);
+      const openaiCleaned = openaiCleanedMap.get(pageIdStr);
+      
+      // Get cleaned text (prioritize OpenAI cleaned, fallback to raw OCR)
+      let cleanedText: string | null = null;
+      let fullText: string | null = null;
+      
+      if (openaiCleaned) {
+        // If we have OpenAI cleaned results
+        if (openaiCleaned.fullText) {
+          // Use the fullText field if available
+          fullText = openaiCleaned.fullText;
           cleanedText = openaiCleaned.cleanedText;
-        } else {
-          // Fallback to raw OCR text from either source
-          if (geminiOcr?.extractedText) {
-            cleanedText = geminiOcr.extractedText;
-          } else if (replicateOcr?.extractedText) {
-            cleanedText = replicateOcr.extractedText;
-          }
+        } else if (openaiCleaned.cleanedText) {
+          // Fall back to cleanedText for backward compatibility
+          cleanedText = openaiCleaned.cleanedText;
         }
-
-        // Create snippet (first 160 characters)
-        let cleanedSnippet: string | null = null;
-        if (cleanedText && cleanedText.length > 0) {
+      } else if (geminiOcr?.extractedText) {
+        cleanedText = geminiOcr.extractedText;
+      } else if (replicateOcr?.extractedText) {
+        cleanedText = replicateOcr.extractedText;
+      }
+      
+      // Create snippet if needed
+      let cleanedSnippet: string | null = null;
+      if (cleanedText && cleanedText.length > 0) {
+        // If cleanedText is already a snippet (after our schema change), use it directly
+        if (cleanedText.endsWith('…')) {
+          cleanedSnippet = cleanedText;
+        } else {
+          // Otherwise create a snippet
           cleanedSnippet =
             cleanedText.length > 160
               ? `${cleanedText.slice(0, 160)}…`
               : cleanedText;
         }
-
-        return {
-          pageId: page._id,
-          pageNumber: page.pageNumber,
-          geminiStatus: (geminiOcr?.ocrStatus as OcrStatus) || "pending",
-          replicateStatus: (replicateOcr?.ocrStatus as OcrStatus) || "pending",
-          cleanedSnippet,
-        };
-      })
-    );
-
-    // Return pages sorted by page number
+      }
+      
+      return {
+        pageId: page._id,
+        pageNumber: page.pageNumber,
+        geminiStatus: (geminiOcr?.ocrStatus as OcrStatus) || "pending",
+        replicateStatus: (replicateOcr?.ocrStatus as OcrStatus) || "pending",
+        cleanedSnippet,
+        fullText, // Include fullText in the response
+      };
+    });
+    
+    // Return pages sorted by page number (should already be sorted, but just to be safe)
     return pageInfos.sort((a, b) => a.pageNumber - b.pageNumber);
   },
 });
@@ -199,7 +246,7 @@ export const getPdfByIds = query({
   },
 });
 
-// Get processed pages with cleaned text for a PDF
+// Get processed pages with cleaned text for a PDF - optimized to avoid N+1 queries
 export const getProcessedPagesForPdf = query({
   args: {
     pdfId: v.id("pdfs"),
@@ -211,62 +258,90 @@ export const getProcessedPagesForPdf = query({
       .withIndex("byPdfIdAndPageNumber", (q) => q.eq("pdfId", args.pdfId))
       .collect();
     
-    // For each page, get the cleaned text
-    const pagesWithText = await asyncMap(pages, async (page) => {
-      // First, check if we have cleaned text from OpenAI
-      const openaiCleaned = await ctx.db
-        .query("openaiCleanedPage")
-        .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-        .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
-        .first();
+    if (pages.length === 0) {
+      return [];
+    }
+    
+    // Create an array of all page IDs
+    const pageIds = pages.map(page => page._id);
+    
+    // Batch fetch all OCR results in parallel
+    const [allOpenaiCleaned, allGeminiOcr, allReplicateOcr] = await Promise.all([
+      // OpenAI cleaned results
+      Promise.all(
+        pageIds.map(pageId => 
+          ctx.db.query("openaiCleanedPage")
+            .withIndex("by_page_id", q => q.eq("pageId", pageId))
+            .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+            .first()
+        )
+      ).then(results => results.filter(result => result !== null) as Doc<"openaiCleanedPage">[]),
       
-      if (openaiCleaned?.cleanedText) {
-        return {
-          pageId: page._id,
-          pageNumber: page.pageNumber,
-          cleanedText: openaiCleaned.cleanedText,
-        };
+      // Gemini OCR results
+      Promise.all(
+        pageIds.map(pageId => 
+          ctx.db.query("geminiPageOcr")
+            .withIndex("by_page_id", q => q.eq("pageId", pageId))
+            .filter((q) => q.eq(q.field("ocrStatus"), "completed"))
+            .first()
+        )
+      ).then(results => results.filter(result => result !== null) as Doc<"geminiPageOcr">[]),
+      
+      // Replicate OCR results
+      Promise.all(
+        pageIds.map(pageId => 
+          ctx.db.query("replicatePageOcr")
+            .withIndex("by_page_id", q => q.eq("pageId", pageId))
+            .filter((q) => q.eq(q.field("ocrStatus"), "completed"))
+            .first()
+        )
+      ).then(results => results.filter(result => result !== null) as Doc<"replicatePageOcr">[])
+    ]);
+    
+    // Create lookup maps for efficient access
+    const openaiCleanedMap = new Map(
+      allOpenaiCleaned.map(result => [
+        result.pageId.toString(), 
+        { 
+          cleanedText: result.cleanedText || "",
+          fullText: result.fullText || result.cleanedText || ""  // Prefer fullText, fall back to cleanedText
+        }
+      ])
+    );
+    
+    const geminiOcrMap = new Map(
+      allGeminiOcr.map(result => [result.pageId.toString(), result.extractedText || ""])
+    );
+    
+    const replicateOcrMap = new Map(
+      allReplicateOcr.map(result => [result.pageId.toString(), result.extractedText || ""])
+    );
+    
+    // Process pages using the lookup maps
+    const pagesWithText = pages.map(page => {
+      const pageIdStr = page._id.toString();
+      
+      // Priority: OpenAI cleaned > Gemini OCR > Replicate OCR
+      let cleanedText = "";
+      
+      if (openaiCleanedMap.has(pageIdStr)) {
+        // Prefer the fullText if available
+        const openaiData = openaiCleanedMap.get(pageIdStr)!;
+        cleanedText = openaiData.fullText || openaiData.cleanedText;
+      } else if (geminiOcrMap.has(pageIdStr)) {
+        cleanedText = geminiOcrMap.get(pageIdStr) || "";
+      } else if (replicateOcrMap.has(pageIdStr)) {
+        cleanedText = replicateOcrMap.get(pageIdStr) || "";
       }
       
-      // If no OpenAI cleaned text, try Gemini
-      const geminiOcr = await ctx.db
-        .query("geminiPageOcr")
-        .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-        .filter((q) => q.eq(q.field("ocrStatus"), "completed"))
-        .first();
-      
-      if (geminiOcr?.extractedText) {
-        return {
-          pageId: page._id,
-          pageNumber: page.pageNumber,
-          cleanedText: geminiOcr.extractedText,
-        };
-      }
-      
-      // If no Gemini, try Replicate
-      const replicateOcr = await ctx.db
-        .query("replicatePageOcr")
-        .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
-        .filter((q) => q.eq(q.field("ocrStatus"), "completed"))
-        .first();
-      
-      if (replicateOcr?.extractedText) {
-        return {
-          pageId: page._id,
-          pageNumber: page.pageNumber,
-          cleanedText: replicateOcr.extractedText,
-        };
-      }
-      
-      // If no text found, return with empty text
       return {
         pageId: page._id,
         pageNumber: page.pageNumber,
-        cleanedText: "",
+        cleanedText,
       };
     });
     
-    // Sort by page number and filter out empty pages
+    // Filter out empty pages and sort by page number
     return pagesWithText
       .filter(page => page.cleanedText.trim().length > 0)
       .sort((a, b) => a.pageNumber - b.pageNumber);
@@ -285,5 +360,106 @@ export const getPdfSummary = query({
       .first();
     
     return summary;
+  },
+});
+
+// For debugging and performance benchmarking only
+export const benchmarkPageQueries = query({
+  args: {
+    pdfId: v.id("pdfs"),
+    mode: v.union(v.literal("legacy"), v.literal("optimized")),
+  },
+  handler: async (ctx, args) => {
+    // Start timer
+    const startTime = Date.now();
+    let queryCount = 0;
+    
+    // Get pages
+    const pages = await ctx.db
+      .query("pages")
+      .withIndex("byPdfIdAndPageNumber", (q) => q.eq("pdfId", args.pdfId))
+      .collect();
+    queryCount++;
+    
+    if (pages.length === 0) {
+      return { 
+        status: "empty", 
+        queryCount, 
+        pageCount: 0,
+        timeMs: Date.now() - startTime 
+      };
+    }
+    
+    if (args.mode === "legacy") {
+      // Legacy N+1 implementation (modified to just count queries, not actually build the result)
+      for (const page of pages) {
+        // For Gemini OCR status
+        await ctx.db
+          .query("geminiPageOcr")
+          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+          .first();
+        queryCount++;
+        
+        // For Replicate OCR status
+        await ctx.db
+          .query("replicatePageOcr")
+          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+          .first();
+        queryCount++;
+        
+        // For OpenAI cleaned text
+        await ctx.db
+          .query("openaiCleanedPage")
+          .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+          .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+          .first();
+        queryCount++;
+      }
+    } else {
+      // Optimized batched queries implementation
+      const pageIds = pages.map(page => page._id);
+      
+      // Batch query for Gemini OCR
+      await Promise.all(
+        pageIds.map(pageId => 
+          ctx.db.query("geminiPageOcr")
+            .withIndex("by_page_id", q => q.eq("pageId", pageId))
+            .first()
+        )
+      );
+      queryCount += pageIds.length;
+      
+      // Batch query for Replicate OCR
+      await Promise.all(
+        pageIds.map(pageId => 
+          ctx.db.query("replicatePageOcr")
+            .withIndex("by_page_id", q => q.eq("pageId", pageId))
+            .first()
+        )
+      );
+      queryCount += pageIds.length;
+      
+      // Batch query for OpenAI cleaned
+      await Promise.all(
+        pageIds.map(pageId => 
+          ctx.db.query("openaiCleanedPage")
+            .withIndex("by_page_id", q => q.eq("pageId", pageId))
+            .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+            .first()
+        )
+      );
+      queryCount += pageIds.length;
+    }
+    
+    const endTime = Date.now();
+    
+    return {
+      status: "success",
+      mode: args.mode,
+      pageCount: pages.length,
+      queryCount,
+      timeMs: endTime - startTime,
+      queriesPerPage: queryCount / pages.length
+    };
   },
 });

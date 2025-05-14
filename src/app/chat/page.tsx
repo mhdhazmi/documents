@@ -51,6 +51,8 @@ export default function Chat() {
   const [selectedFileId, setSelectedFileId] = useState<Id<"_storage"> | null>(
     null
   ); // Updated type
+  // Store local messages for optimistic updates
+  const [localMessages, setLocalMessages] = useState<Array<any>>([]);
   const router = useRouter();
 
   // Reference to PDFViewer for page navigation
@@ -66,6 +68,11 @@ export default function Chat() {
     api.files.queries.getFileDownloadUrl,
     selectedFileId ? { fileId: selectedFileId } : "skip"
   );
+  
+  // Get server messages
+  const serverMessages = useQuery(api.serve.serve.retrieveMessages, {
+    sessionId,
+  });
 
   // Update PDF URL when fileUrl changes
   useEffect(() => {
@@ -73,6 +80,14 @@ export default function Chat() {
       setPdfUrl(fileUrl);
     }
   }, [fileUrl]);
+  
+  // Sync server messages with local messages
+  useEffect(() => {
+    if (serverMessages && serverMessages.length > 0) {
+      // Replace temporary messages with server messages
+      setLocalMessages(serverMessages);
+    }
+  }, [serverMessages]);
 
   // Initialize sessionId after component mounts to avoid SSR issues
   useEffect(() => {
@@ -84,6 +99,7 @@ export default function Chat() {
     setPdfUrl("");
     setSelectedFilename("");
     setSelectedFileId(null);
+    setLocalMessages([]);
     router.refresh();
   };
 
@@ -117,6 +133,28 @@ export default function Chat() {
       pdfViewerRef.current.goToPage(pageNumber);
     }
   };
+  
+  // Zoom control handlers
+  const handleZoomIn = () => {
+    if (pdfViewerRef.current) {
+      pdfViewerRef.current.zoomIn();
+    }
+  };
+  
+  const handleZoomOut = () => {
+    if (pdfViewerRef.current) {
+      pdfViewerRef.current.zoomOut();
+    }
+  };
+  
+  const handleToggleFitMode = () => {
+    if (pdfViewerRef.current) {
+      pdfViewerRef.current.toggleFitToWidth();
+    }
+  };
+
+  // Track if PDF is actively viewed for animation
+  const hasPdf = Boolean(pdfUrl);
 
   return (
     <div
@@ -129,17 +167,23 @@ export default function Chat() {
         backgroundAttachment: "fixed",
       }}
     >
-      <div className="flex flex-col md:flex-row h-auto md:h-full">
-        <PDFViewer
-          ref={pdfViewerRef}
-          pdfUrl={pdfUrl}
-          fitToWidth={true}
-          maxScale={2.0}
-        />
-        <div className="w-full md:w-full p-3 flex flex-col h-auto md:h-[95%]">
-          <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-3 border border-white/20 flex-grow flex flex-col overflow-auto max-h-[80vh] md:max-h-none">
+      <div className="flex flex-col md:flex-row h-auto md:h-[calc(100vh-4rem)] relative">
+        {/* PDF Viewer (always takes 1/2 width on desktop) */}
+        <div className="md:w-1/2 w-full max-h-[400px] md:max-h-none md:h-full p-3 transition-all duration-500 ease-in-out transform overflow-hidden">
+          <PDFViewer
+            ref={pdfViewerRef}
+            pdfUrl={pdfUrl}
+            fitToWidth={true}
+            maxScale={2.0}
+          />
+        </div>
+        
+        {/* Chat container (always takes 1/2 width on desktop) */}
+        <div className="md:w-1/2 w-full transition-all duration-500 ease-in-out p-3 flex flex-col h-auto md:h-full">
+          <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-3 border border-white/20 flex-grow flex flex-col overflow-auto md:h-full">
             <ChatHeader />
             <ChatMessages
+              messages={localMessages}
               sessionId={sessionId}
               onCitationClick={handleCitationClick}
             />
@@ -154,7 +198,7 @@ export default function Chat() {
                 <ChatInput
                   input={input}
                   setInput={setInput}
-                  setMessages={() => {}}
+                  setMessages={setLocalMessages}
                   sessionId={sessionId}
                 />
               </div>
@@ -174,7 +218,10 @@ export default function Chat() {
 
       {/* Display current PDF filename if available */}
       {selectedFilename && (
-        <div className="fixed bottom-4 left-4 bg-emerald-950/90 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full">
+        <div 
+          className="fixed bottom-4 left-4 bg-emerald-950/90 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full
+            animate-in slide-in-from-left duration-300"
+        >
           Viewing: {selectedFilename}
         </div>
       )}

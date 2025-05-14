@@ -2,7 +2,7 @@ import { httpAction } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 import { cleanTextWithOpenAI } from "./utils/cleaner";
-import { readableStreamFromIterable } from "./utils/stream";
+// Legacy import removed: readableStreamFromIterable
 
 // Centralized CORS headers function to ensure consistency
 const getCorsHeaders = (request: Request): Record<string, string> => {
@@ -42,7 +42,10 @@ const getCorsHeaders = (request: Request): Record<string, string> => {
   };
 };
 
-export const cleanHandler = httpAction(async (ctx, req) => {
+// Legacy cleanHandler has been removed
+
+// New endpoint to get first page OCR results with priority
+export const firstPageHandler = httpAction(async (ctx, req) => {
   // Get CORS headers for this request
   const corsHeaders = getCorsHeaders(req);
   
@@ -69,7 +72,10 @@ export const cleanHandler = httpAction(async (ctx, req) => {
       throw new Error("Invalid JSON in request body");
     });
     
-    const { pdfId, source } = body as { pdfId: Id<"pdfs">; source: "gemini" | "replicate" };
+    const { pdfId, source } = body as { 
+      pdfId: Id<"pdfs">; 
+      source: "gemini" | "replicate";
+    };
     
     if (!pdfId || !source) {
       return new Response("Missing required fields: pdfId and source", {
@@ -78,7 +84,7 @@ export const cleanHandler = httpAction(async (ctx, req) => {
       });
     }
     
-    console.log("Processing request for pdfId:", pdfId, "source:", source);
+    console.log("Processing first page request for pdfId:", pdfId, "source:", source);
     
     // Check if PDF exists
     const pdf = await ctx.runQuery(api.pdf.queries.getPdf, { pdfId });
@@ -89,39 +95,24 @@ export const cleanHandler = httpAction(async (ctx, req) => {
       });
     }
     
-    // Get OCR status
-    const [geminiId] = await ctx.runQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId });
-    const [replicateId] = await ctx.runQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId });
-    const embeddingRecord = await ctx.runQuery(internal.ingest.ingest.getEmbedding, { pdfId });
+    // Get pages and check if they exist
+    const pages = await ctx.runQuery(api.pdf.queries.getPdfPages, { pdfId });
+    if (!pages || pages.length === 0) {
+      return new Response("No pages found for this PDF", { 
+        status: 404, 
+        headers: corsHeaders 
+      });
+    }
     
-    // Update status to "started"
-    await ctx.runMutation(internal.ocr.openai.mutations.updateCleanedStatus, { 
-      pdfId, 
-      source, 
-      cleaningStatus: "started", 
-      cleanedText: "" 
-    });
+    // Get first page ID
+    const firstPageId = pages[0]._id;
     
-    // Get text to clean based on source
-    let text;
+    // Check if first page OCR is already completed
+    let ocrResults;
     if (source === "gemini") {
-      if (geminiId?.ocrStatus !== "completed") {
-        return new Response("Gemini OCR not completed", { 
-          status: 400, 
-          headers: corsHeaders 
-        });
-      }
-      const geminiResults = await ctx.runQuery(api.ocr.gemini.queries.getOcrByPdfId, { pdfId });
-      text = geminiResults?.[0]?.extractedText || "";
+      ocrResults = await ctx.runQuery(api.ocr.gemini.queries.getPageOcrResults, { pageId: firstPageId });
     } else if (source === "replicate") {
-      if (replicateId?.ocrStatus !== "completed") {
-        return new Response("Replicate OCR not completed", { 
-          status: 400, 
-          headers: corsHeaders 
-        });
-      }
-      const replicateResults = await ctx.runQuery(api.ocr.replicate.queries.getOcrByPdfId, { pdfId });
-      text = replicateResults?.[0]?.extractedText || "";
+      ocrResults = await ctx.runQuery(api.ocr.replicate.queries.getPageOcrResults, { pageId: firstPageId });
     } else {
       return new Response(`Invalid source: ${source}`, { 
         status: 400, 
@@ -129,6 +120,34 @@ export const cleanHandler = httpAction(async (ctx, req) => {
       });
     }
     
+    // Check if first page OCR is completed
+    if (!ocrResults?.ocrResults || ocrResults.ocrResults.ocrStatus !== "completed") {
+      // If not completed, prioritize first page OCR
+      if (source === "gemini") {
+        await ctx.runAction(internal.ocr.gemini.actions.processPageWithOcr, { pageId: firstPageId });
+      } else {
+        await ctx.runAction(internal.ocr.replicate.actions.processPageWithOcr, { pageId: firstPageId });
+      }
+      
+      // Return a waiting status
+      return new Response(
+        JSON.stringify({ 
+          status: "processing", 
+          message: "First page OCR has been prioritized and started. Try again in a few seconds."
+        }), 
+        { 
+          status: 202, 
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "5",
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+    
+    // If OCR is completed, get the text and clean it
+    const text = ocrResults.ocrResults.extractedText || "";
     if (!text || text.trim() === "") {
       return new Response("No text found to clean", { 
         status: 400, 
@@ -146,34 +165,22 @@ export const cleanHandler = httpAction(async (ctx, req) => {
       try {
         let fullText = "";
         
-        // Use the new cleanTextWithOpenAI utility
+        // Use the cleanTextWithOpenAI utility
         const generator = cleanTextWithOpenAI(text);
         for await (const chunk of generator) {
           await writer.write(encoder.encode(chunk));
           fullText += chunk;
         }
         
-        // Get the final result from the generator
-        const result = await generator.next();
-        if (result.done && result.value) {
-          fullText = result.value;
-        }
-        
-        // Save completed result
-        await ctx.runMutation(internal.ocr.openai.mutations.saveCleanedResults, {
-          pdfId,
+        // Save the first page cleaned results
+        await ctx.runMutation(internal.ocr.openai.mutations.savePageCleanedResults, {
+          pageId: firstPageId,
           source,
           cleanedText: fullText,
           cleaningStatus: "completed"
         });
-        
-        // Create embedding if needed
-        if (source === "gemini" && !embeddingRecord) {
-          await ctx.runAction(api.ingest.ingest.chunkAndEmbed, { pdfId });
-        }
       } catch (error) {
-        console.error("Error in streaming process:", error);
-        // Can't update response headers at this point
+        console.error("Error in first page streaming process:", error);
       } finally {
         await writer.close();
       }
@@ -188,7 +195,7 @@ export const cleanHandler = httpAction(async (ctx, req) => {
     });
     
   } catch (error) {
-    console.error("Error in clean handler:", error);
+    console.error("Error in first page handler:", error);
     return new Response(
       JSON.stringify({ 
         error: true, 

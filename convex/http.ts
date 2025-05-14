@@ -1,19 +1,9 @@
 import { httpRouter } from "convex/server";
-import { cleanHandler, cleanPageHandler } from "./api";
+import { cleanPageHandler, firstPageHandler } from "./api";
 
 const http = httpRouter();
 
-
-http.route({
-  path: "/clean",
-  method: "POST",
-  handler: cleanHandler
-});
-http.route({
-  path: "/clean",
-  method: "OPTIONS",
-  handler: cleanHandler   // httpAction will catch OPTIONS itself
-});
+// Legacy route "/clean" has been removed
 
 http.route({
   path: "/cleanPage",
@@ -24,6 +14,18 @@ http.route({
   path: "/cleanPage",
   method: "OPTIONS",
   handler: cleanPageHandler   // httpAction will catch OPTIONS itself
+});
+
+// Route for first page prioritized OCR
+http.route({
+  path: "/firstPage",
+  method: "POST",
+  handler: firstPageHandler
+});
+http.route({
+  path: "/firstPage",
+  method: "OPTIONS",
+  handler: firstPageHandler   // httpAction will catch OPTIONS itself
 });
 
 export default http;

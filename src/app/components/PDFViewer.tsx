@@ -2,17 +2,12 @@
 "use client";
 
 import React, {
-  useEffect,
   useRef,
   forwardRef,
   useImperativeHandle,
   useState,
-  useCallback,
+  useEffect,
 } from "react";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf";
-
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 interface PDFViewerProps {
   pdfUrl: string | null;
@@ -24,6 +19,10 @@ interface PDFViewerProps {
 
 export interface PDFViewerHandle {
   goToPage: (page: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  toggleFitToWidth: () => void;
+  resetZoom: () => void;
 }
 
 const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
@@ -37,212 +36,86 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
     },
     ref
   ) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const canvasContainerRef = useRef<HTMLDivElement>(null);
-    const currentPageRef = useRef(initialPage);
-    const pdfDocumentRef = useRef<pdfjs.PDFDocumentProxy | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [currentFitMode, setCurrentFitMode] = useState(fitToWidth);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const [currentPage, setCurrentPage] = useState(initialPage);
+    const [totalPages, setTotalPages] = useState(0);
+    
+    // Track zoom level internally
+    const [zoomLevel, setZoomLevel] = useState(100);
 
-    const calculateScale = useCallback(
-      (
-        viewport: pdfjs.PageViewport,
-        containerWidth: number,
-        containerHeight: number
-      ): number => {
-        if (!currentFitMode) return 1.0;
-
-        // Calculate scale to fit both width and height
-        const widthScale = containerWidth / viewport.width;
-        const heightScale = containerHeight / viewport.height;
-
-        // Use the smaller scale to ensure the page fits in both dimensions
-        const scale = Math.min(widthScale, heightScale);
-
-        // Clamp the scale between 0.1 and maxScale
-        return Math.min(Math.max(scale, 0.1), maxScale);
-      },
-      [currentFitMode, maxScale]
-    );
-
-    const renderPage = useCallback(
-      async (pageNumber: number) => {
-        if (
-          !pdfDocumentRef.current ||
-          !containerRef.current ||
-          !canvasContainerRef.current
-        )
-          return;
-
-        try {
-          setIsLoading(true);
-          setError(null);
-
-          const page = await pdfDocumentRef.current.getPage(pageNumber);
-          const container = containerRef.current;
-          const canvasContainer = canvasContainerRef.current;
-
-          // Get the container dimensions
-          const containerWidth = container.clientWidth - 40; // Account for padding
-          const containerHeight = container.clientHeight - 40; // Account for padding
-
-          // Get viewport with default scale first
-          const viewport = page.getViewport({ scale: 1.0 });
-
-          // Calculate appropriate scale to fit
-          const scale = calculateScale(
-            viewport,
-            containerWidth,
-            containerHeight
-          );
-          const scaledViewport = page.getViewport({ scale });
-
-          // Create canvas
-          const canvas = document.createElement("canvas");
-          const context = canvas.getContext("2d")!;
-          canvas.height = scaledViewport.height;
-          canvas.width = scaledViewport.width;
-
-          // Clear container and append canvas
-          canvasContainer.innerHTML = "";
-          canvasContainer.appendChild(canvas);
-
-          // Center the canvas in the container
-          canvas.style.display = "block";
-          canvas.style.margin = "0 auto";
-
-          // Render page
-          await page.render({
-            canvasContext: context,
-            viewport: scaledViewport,
-          }).promise;
-
-          // Update current page and notify parent
-          currentPageRef.current = pageNumber;
-          onPageChange?.(pageNumber);
-        } catch (error) {
-          console.error("Error rendering page:", error);
-          setError(
-            `خطأ في عرض الصفحة: ${error instanceof Error ? error.message : String(error)}`
-          );
-        } finally {
-          setIsLoading(false);
-        }
-      },
-      [calculateScale, setIsLoading, setError, onPageChange]
-    );
-
-    // Update fit mode when prop changes
-    useEffect(() => {
-      setCurrentFitMode(fitToWidth);
-      if (pdfDocumentRef.current) {
-        renderPage(currentPageRef.current);
-      }
-    }, [fitToWidth, renderPage]);
-
-    // Expose goToPage method via ref
+    // Expose methods via ref
     useImperativeHandle(ref, () => ({
+      // These functions will use postMessage to communicate with the PDF viewer inside the iframe
       goToPage: (page: number) => {
-        if (pdfDocumentRef.current) {
-          renderPage(page);
+        // Simple but effective - many PDF viewers accept #page=N in the URL hash
+        if (iframeRef.current && page >= 1) {
+          try {
+            // First try to use the iframe's contentWindow.PDFViewerApplication if available
+            if (iframeRef.current.contentWindow) {
+              // This can only work if the browser doesn't block cross-origin iframe access
+              (iframeRef.current.contentWindow as any).location.hash = `#page=${page}`;
+              setCurrentPage(page);
+              if (onPageChange) onPageChange(page);
+            }
+          } catch (err) {
+            console.warn("Could not directly navigate PDF:", err);
+            // Fallback - reload the iframe with the page in the URL
+            iframeRef.current.src = `${pdfUrl}#page=${page}`;
+            setCurrentPage(page);
+          }
         }
       },
+      zoomIn: () => {
+        setZoomLevel(prev => Math.min(prev + 10, 200));
+      },
+      zoomOut: () => {
+        setZoomLevel(prev => Math.max(prev - 10, 50));
+      },
+      toggleFitToWidth: () => {
+        // Not actually implemented - iframes don't easily support this
+        console.log("toggleFitToWidth not available in iframe mode");
+      },
+      resetZoom: () => {
+        setZoomLevel(100);
+      }
     }));
 
+    // Handle loading state
     useEffect(() => {
-      if (!pdfUrl) return;
-
-      let mounted = true;
-      const loadPDF = async () => {
-        try {
-          setIsLoading(true);
-          setError(null);
-
-          const pdf = await pdfjs.getDocument(pdfUrl).promise;
-
-          if (!mounted) {
-            pdf.destroy();
-            return;
-          }
-
-          pdfDocumentRef.current = pdf;
-          // Render initial page
-          await renderPage(initialPage);
-        } catch (error) {
-          console.error("Error loading PDF:", error);
-          if (mounted) {
-            setError(
-              `خطأ في تحميل الملف: ${error instanceof Error ? error.message : String(error)}`
-            );
-          }
-        } finally {
-          if (mounted) {
-            setIsLoading(false);
-          }
-        }
-      };
-
-      loadPDF();
-
-      // Cleanup
-      return () => {
-        mounted = false;
-        if (pdfDocumentRef.current) {
-          pdfDocumentRef.current.destroy();
-          pdfDocumentRef.current = null;
-        }
-      };
-    }, [pdfUrl, initialPage, renderPage]);
-
-    // Handle window resize
-    useEffect(() => {
-      const handleResize = () => {
-        if (pdfDocumentRef.current) {
-          renderPage(currentPageRef.current);
-        }
-      };
-
-      let timeoutId: NodeJS.Timeout;
-      const debouncedResize = () => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(handleResize, 150);
-      };
-
-      window.addEventListener("resize", debouncedResize);
-      return () => {
-        window.removeEventListener("resize", debouncedResize);
-        clearTimeout(timeoutId);
-      };
-    }, [renderPage]);
-
-    // Handle keyboard navigation
-    useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (!pdfDocumentRef.current) return;
-
-        const totalPages = pdfDocumentRef.current.numPages;
-
-        if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-          e.preventDefault();
-          if (currentPageRef.current > 1) {
-            renderPage(currentPageRef.current - 1);
-          }
-        } else if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-          e.preventDefault();
-          if (currentPageRef.current < totalPages) {
-            renderPage(currentPageRef.current + 1);
-          }
-        }
-      };
-
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [renderPage]);
-
+      if (pdfUrl) {
+        setIsLoading(true);
+        // We'll reset loading state when iframe loads
+      } else {
+        setIsLoading(false);
+      }
+    }, [pdfUrl]);
+    
+    // Show a placeholder when no PDF is loaded
+    if (!pdfUrl) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full w-full bg-white/10 backdrop-blur-sm rounded-lg border border-white/20 p-4 text-white/70">
+          <div className="w-16 h-16 mb-4 opacity-70">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </div>
+          <p className="text-center text-lg font-medium">قم بتحديد ملف PDF</p>
+          <p className="text-center text-sm mt-2 max-w-xs opacity-70">
+            اختر مستندًا من مصادر المحادثة لعرضه هنا
+          </p>
+        </div>
+      );
+    }
+    
     if (error) {
       return (
-        <div className="flex items-center justify-center h-full text-red-400 bg-red-900/10 rounded-lg border border-red-500/20 p-4">
+        <div className="flex items-center justify-center h-full w-full text-red-400 bg-red-900/10 rounded-lg border border-red-500/20 p-4">
           <div className="text-center">
             <p className="text-sm">{error}</p>
             <button
@@ -256,30 +129,46 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
       );
     }
 
+    // Use a simple iframe-based PDF viewer
     return (
-      <div
-        ref={containerRef}
-        className="relative w-full h-[95%] pt-3 overflow-hidden bg-white/10 rounded-lg p-4"
+      <div 
+        className="relative w-full h-full overflow-hidden bg-white/10 backdrop-blur-sm rounded-lg p-4 shadow-lg transition-all duration-500 border border-white/20"
       >
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm rounded-lg z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-emerald-950/80 backdrop-blur-sm rounded-lg z-20">
             <div className="flex items-center gap-3 text-white">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-400"></div>
               <span>جاري تحميل الملف...</span>
             </div>
           </div>
         )}
-
-        <div
-          ref={canvasContainerRef}
-          className="w-full h-full flex items-center justify-center"
+        
+        {/* PDF iframe with styles based on zoomLevel */}
+        <iframe
+          ref={iframeRef}
+          src={`${pdfUrl}#page=${initialPage}&scrollbars=0&toolbar=0&navpanes=0`}
+          className="w-full h-full rounded-lg bg-white overflow-hidden"
+          style={{ 
+            transform: `scale(${zoomLevel/100})`,
+            transformOrigin: 'center top'
+          }}
+          onLoad={() => {
+            setIsLoading(false);
+            // Prevent automatic scroll
+            if (iframeRef.current && iframeRef.current.contentWindow) {
+              try {
+                // Try to prevent scrolling in the iframe content
+                iframeRef.current.contentWindow.scrollTo(0, 0);
+              } catch (err) {
+                // Ignore cross-origin errors
+              }
+            }
+          }}
+          onError={() => {
+            setIsLoading(false);
+            setError("خطأ في تحميل الملف");
+          }}
         />
-
-        {pdfUrl && !isLoading && !error && (
-          <div className="absolute bottom-2 left-2 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded">
-            صفحة {currentPageRef.current} من {pdfDocumentRef.current?.numPages}
-          </div>
-        )}
       </div>
     );
   }

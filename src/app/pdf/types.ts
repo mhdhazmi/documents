@@ -10,4 +10,5 @@ export type PdfPageInfo = {
   geminiStatus: OcrStatus;
   replicateStatus: OcrStatus;
   cleanedSnippet: string | null;
+  fullText?: string | null;      // Complete cleaned text when available
 };

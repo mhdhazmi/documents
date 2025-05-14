@@ -1,4 +1,4 @@
-// src/app/components/ChatMessages.tsx - Updated with citation support
+// src/app/components/ChatMessages.tsx - Updated with citation support and optimistic UI
 "use client";
 import { useEffect, useRef } from "react";
 import ChatMessage from "./ChatMessage";
@@ -7,21 +7,24 @@ import { api } from "../../../convex/_generated/api";
 
 interface ChatMessagesProps {
   sessionId: string;
+  messages?: Array<any>;
   onCitationClick?: (filename: string, pageNumber?: number) => void;
 }
 
 export default function ChatMessages({
   sessionId,
+  messages: propMessages,
   onCitationClick = () => {},
 }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
+  // Fallback to server messages if no prop messages are provided
   const retrieveMessages = useQuery(api.serve.serve.retrieveMessages, {
     sessionId,
   });
 
-  const messages = retrieveMessages;
+  const messages = propMessages || retrieveMessages;
 
   // Track if user is manually scrolling
   const userIsScrolling = useRef(false);
@@ -80,15 +83,27 @@ export default function ChatMessages({
     };
   }, []);
 
-  // Scroll to bottom when new messages arrive, but respect user scrolling
+  // Scroll to bottom only when new messages arrive (not on every render)
+  // Use a ref to track previous message count to determine if new messages were added
+  const prevMessageCountRef = useRef(0);
+  
   useEffect(() => {
+    if (!messages) return;
+    
+    const currentMessageCount = messages.length;
+    const hasNewMessages = currentMessageCount > prevMessageCountRef.current;
+    
     // Only auto-scroll if:
-    // 1. User is not actively scrolling upward AND
-    // 2. User is already near the bottom OR this is the first load
-    if (!userIsScrolling.current && (isNearBottom() || !messages?.length)) {
+    // 1. There are actual new messages (not just re-renders)
+    // 2. User is not actively scrolling upward AND
+    // 3. User is already near the bottom OR this is the first load
+    if (hasNewMessages && (!userIsScrolling.current && (isNearBottom() || currentMessageCount <= 1))) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+    
+    // Update the previous message count
+    prevMessageCountRef.current = currentMessageCount;
+  }, [messages, isNearBottom]);
 
   return (
     <div

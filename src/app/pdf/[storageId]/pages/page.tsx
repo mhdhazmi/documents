@@ -40,8 +40,16 @@ export default function PagesView() {
     [setPage]
   );
 
-  // Sync context page changes to PDFViewer
+  // Sync context page changes to PDFViewer, but avoid initial auto-scrolling
+  const initialRender = useRef(true);
+  
   useEffect(() => {
+    if (initialRender.current) {
+      // Skip first render to prevent auto-scrolling on page load
+      initialRender.current = false;
+      return;
+    }
+    
     if (page && viewerRef.current) {
       viewerRef.current.goToPage(page);
     }
@@ -68,7 +76,7 @@ export default function PagesView() {
         }}
       >
         {/* Skeleton Progress Bar */}
-        <div className="sticky top-0 z-50 bg-emerald-950/80 backdrop-blur-md border-b border-emerald-800/30 p-4">
+        <div className="bg-emerald-950/80 backdrop-blur-md border-b border-emerald-800/30 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Skeleton className="h-6 w-40 bg-white/10" />
@@ -142,7 +150,7 @@ export default function PagesView() {
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className="sticky top-0 z-50 bg-emerald-950/80 backdrop-blur-md border-b border-emerald-800/30"
+        className="bg-emerald-950/80 backdrop-blur-md border-b border-emerald-800/30"
       >
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-4">

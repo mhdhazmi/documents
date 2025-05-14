@@ -39,7 +39,7 @@ export default function ChatMessage({
           <TypingIndicator />
         ) : (
           <div
-            className={`prose prose-invert prose-sm max-w-none break-words text-lg ${
+            className={`prose prose-invert prose-sm max-w-none break-words text-md ${
               isUser ? "" : "prose-headings:text-white prose-a:text-blue-300"
             }`}
             style={{

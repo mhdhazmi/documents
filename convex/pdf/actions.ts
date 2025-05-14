@@ -95,19 +95,10 @@ export const generateSummary = internalAction({
       
       let fullText = "";
       
-      // METHOD 1: Try to get OpenAI cleaned text first (fastest option)
-      try {
-        const cleanedResultsResponse = await ctx.runQuery(api.ocr.openai.queries.getCleanedResults, {
-          pdfId,
-        });
-        
-        if (cleanedResultsResponse?.cleanedResults) {
-          fullText = cleanedResultsResponse.cleanedResults;
-          console.log(`Using OpenAI cleaned results for PDF ${pdfId}`);
-        }
-      } catch (error) {
-        console.log(`No OpenAI cleaned results found for PDF ${pdfId}, trying concatenated text`);
-      }
+      // METHOD 1: Legacy OpenAI cleaned results approach has been removed
+      // The openaiOcrResults table no longer exists
+      console.log(`Using only page-level approach to get text for PDF ${pdfId}`);
+      // Skip directly to METHOD 2: Concatenated text
       
       // METHOD 2: If no OpenAI results, try concatenated text
       if (!fullText) {
