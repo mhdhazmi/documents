@@ -58,17 +58,27 @@ export default function ChatWithDocumentPopup({ pdfId, show }: ChatWithDocumentP
       {isVisible && (
         <motion.div
           initial={{ opacity: 0, y: 20, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
+          animate={{ 
+            opacity: 1, 
+            y: [0, -10, 0], 
+            scale: 1,
+            transition: { 
+              opacity: { duration: 0.3, ease: "easeOut" },
+              y: { duration: 4, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" },
+              scale: { duration: 0.3, ease: "easeOut" }
+            }
+          }}
           exit={{ opacity: 0, y: 10, scale: 0.95 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-          className="fixed bottom-6 right-6 z-50"
+          className="fixed bottom-8 right-8 z-50"
         >
           <button
             onClick={handleClick}
-            className="flex items-center gap-2 px-5 py-3.5 bg-emerald-600/90 hover:bg-emerald-500 text-white rounded-full shadow-lg backdrop-blur-sm border border-emerald-500/50 transition-all duration-200 group animate-pulse hover:animate-none"
+            className="relative flex items-center justify-center w-16 h-16 bg-emerald-900 hover:bg-emerald-500 text-white rounded-full shadow-lg backdrop-blur-sm border border-emerald-400/30 transition-all duration-300 hover:scale-110 hover:shadow-emerald-500/30 hover:shadow-xl"
+            title="Chat with this document"
           >
-            <MessageSquareText size={20} className="group-hover:animate-bounce" />
-            <span className="font-medium text-base">Chat with this document</span>
+            {/* Add glow effect behind the icon */}
+            <div className="absolute w-10 h-10 bg-emerald-400/20 rounded-full blur-md"></div>
+            <MessageSquareText size={24} className="text-white relative z-10" />
           </button>
         </motion.div>
       )}

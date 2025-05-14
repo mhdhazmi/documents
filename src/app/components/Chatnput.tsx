@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '../../../convex/_generated/api';
 import { useMutation } from 'convex/react';
-import { Id } from '../../../convex/_generated/dataModel';
 import { ChangeEvent, KeyboardEvent, useState } from 'react';
 
 export default function ChatInput({ input, setInput, setMessages, sessionId }: 
@@ -21,48 +20,43 @@ export default function ChatInput({ input, setInput, setMessages, sessionId }:
   const handleSendMessage = async (): Promise<void> => {
     if (input.trim() === '' || isSubmitting) return;
     
-    // Add user message to the chat optimistically
+    // Get the user message
     const userMessage = input;
-    const timestamp = Date.now();
     
-    // Show optimistic update immediately
-    setMessages(prevMessages => [
-      ...prevMessages, 
-      { 
-        id: `temp-${timestamp}`,
-        text: userMessage, 
-        isUser: true,
-        timestamp: timestamp,
-        sessionId
-      }
-    ]);
-    
-    // Add empty assistant message with loading state
-    setMessages(prevMessages => [
-      ...prevMessages,
-      {
-        id: `temp-assistant-${timestamp}`,
-        text: "",
-        isUser: false,
-        timestamp: timestamp + 1,
-        sessionId
-      }
-    ]);
+    console.log("ChatInput: Sending message with sessionId:", sessionId);
     
     // Clear input immediately for better UX
     setInput('');
     setIsSubmitting(true);
     
     try {
-      // Send to server
-      await saveMessage({
+      // Use Convex mutation to save the message without optimistic UI updates
+      // This will trigger the answer function in serve.ts via runAfter in saveMessage
+      const messageId = await saveMessage({
         message: userMessage,
-        sessionId: sessionId as Id<"chatSessions">,
+        sessionId: sessionId,
         isUser: true,
       });
+      
+      console.log("ChatInput: Message saved successfully, ID:", messageId);
+      
+      // The server will handle the response processing
+      // Messages will be fetched from the server directly
+      
     } catch (error) {
-      console.error("Failed to send message:", error);
-      // Could add error handling here if needed
+      console.error("ChatInput: Failed to send message:", error);
+      
+      // Show error as a new message
+      setMessages(prevMessages => [
+        ...prevMessages,
+        {
+          id: `error-${Date.now()}`,
+          text: "Sorry, there was an error sending your message. Please try again.",
+          isUser: false,
+          timestamp: Date.now(),
+          sessionId
+        }
+      ]);
     } finally {
       setIsSubmitting(false);
     }

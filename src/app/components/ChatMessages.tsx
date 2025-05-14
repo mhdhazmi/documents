@@ -29,10 +29,29 @@ export default function ChatMessages({
 
   // Fallback to server messages if no prop messages are provided
   const retrieveMessages = useQuery(api.serve.serve.retrieveMessages, {
-    sessionId,
+    sessionId, 
   });
 
+  // Log for debugging
+  useEffect(() => {
+    console.log("ChatMessages: useQuery retrieveMessages called with sessionId:", sessionId);
+    console.log("ChatMessages: retrieveMessages result:", retrieveMessages?.length || 0, "messages");
+    console.log("ChatMessages: propMessages:", propMessages?.length || 0, "messages");
+  }, [retrieveMessages, propMessages, sessionId]);
+
+  // Ensure we're getting the latest messages data
   const messages = propMessages || retrieveMessages;
+  
+  // Add more explicit logging to help diagnose rendering issues
+  useEffect(() => {
+    if (messages) {
+      console.log("ChatMessages: Final messages array used for rendering:", 
+        messages.length, 
+        "messages, first message:", 
+        messages.length > 0 ? messages[0].text.substring(0, 30) + "..." : "none");
+    }
+  }, [messages]);
+  
 
   // Track if user is manually scrolling
   const userIsScrolling = useRef(false);
@@ -52,7 +71,6 @@ export default function ChatMessages({
   }, [chatContainerRef]);
 
   // Set up scroll event listeners
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
@@ -90,7 +108,7 @@ export default function ChatMessages({
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, []);
+  }, [isNearBottom]);
 
   // Scroll to bottom only when new messages arrive (not on every render)
   // Use a ref to track previous message count to determine if new messages were added
@@ -111,19 +129,8 @@ export default function ChatMessages({
       return;
     }
     
-    // Check if near bottom - using function directly here instead of calling isNearBottom()
-    // to avoid the exhaustive-deps warning
-    let shouldScroll = false;
-    if (chatContainerRef.current) {
-      const container = chatContainerRef.current;
-      const threshold = 100; // pixels from bottom to trigger auto-scroll
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      
-      shouldScroll = distanceFromBottom <= threshold;
-    } else {
-      shouldScroll = true;
-    }
+    // Check if near bottom using the memoized function
+    const shouldScroll = isNearBottom();
     
     // Only auto-scroll if:
     // 1. There are actual new messages (not just re-renders)
@@ -135,7 +142,7 @@ export default function ChatMessages({
     
     // Update the previous message count
     prevMessageCountRef.current = currentMessageCount;
-  }, [messages]); // All dependencies are now properly accounted for
+  }, [messages, isNearBottom]); // All dependencies are now properly accounted for
 
   return (
     <div
@@ -154,14 +161,29 @@ export default function ChatMessages({
 
       {/* Messages with citation support */}
       {messages &&
-        messages.map((message, index) => (
-          <ChatMessage
-            key={index}
-            message={message.text}
-            isUser={message.isUser}
-            onCitationClick={onCitationClick}
-          />
-        ))}
+        messages.map((message, index) => {
+          let messageText = message.text;
+          
+          // Handle empty messages from AI (loading state)
+          if (!message.isUser && (!messageText || messageText.trim() === "")) {
+            messageText = "...";
+          }
+          
+          // Check if a message has been stuck in loading state for too long (over 15 seconds)
+          const messageAge = Date.now() - message.timestamp;
+          if (!message.isUser && messageText === "..." && messageAge > 15000) {
+            messageText = "There appears to be an issue with the AI response. This might be due to an API problem or server issue. Please try again later.";
+          }
+            
+          return (
+            <ChatMessage
+              key={index}
+              message={messageText}
+              isUser={message.isUser}
+              onCitationClick={onCitationClick}
+            />
+          );
+        })}
 
       {/* Invisible element for scroll reference */}
       <div ref={messagesEndRef} />

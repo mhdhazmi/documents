@@ -13,6 +13,7 @@ import { embedTexts } from "../ingest/ingest";
 import { asyncMap } from "modern-async";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { openai as openaiConfig } from "../config";
 
 // Updated chunk type to include pageId and page metadata
 interface EnhancedChunk {
@@ -60,7 +61,7 @@ export const answer = internalAction({
     sessionId: v.string(),
   },
   handler: async (ctx, { sessionId }): Promise<void> => {
-    // Get messages and process the last user message
+    // Get messages for this session
     const messages = (await ctx.runQuery(api.serve.serve.retrieveMessages, {
       sessionId,
     })) as Message[];
@@ -71,127 +72,167 @@ export const answer = internalAction({
       return;
     }
 
+    // Get the last user message - we assume the last message is from the user
+    // since this action is only triggered after a user sends a message
     const lastUserMessage = messages.at(-1)!.text;
-    console.log("Processing user message:", lastUserMessage);
-
-    // Create a message placeholder for the bot response
-    const messageId = await ctx.runMutation(
-      internal.serve.serve.addBotMessage,
-      {
-        sessionId,
-      }
-    );
+    
+    // First create an empty AI message - we'll stream updates to this
+    const messageId = await ctx.runMutation(internal.serve.serve.addBotMessage, {
+      sessionId,
+    });
 
     try {
-      // 1. Search for relevant documents using vector search
-      const [embedding] = await embedTexts([lastUserMessage]);
-
-      // **NEW: Page-aware vector search**
-      const searchResults = (await ctx.vectorSearch(
-        "embeddings",
-        "byEmbedding",
-        {
-          vector: embedding,
-          limit: 8, // Increased limit to get more results
-        }
-      )) as SearchResult[];
-
-      if (searchResults.length === 0) {
+      // Check for API key availability
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
         await ctx.runMutation(internal.serve.serve.updateBotMessage, {
           messageId,
-          text: "I couldn't find any relevant information in the documents to answer your question. Could you please rephrase or ask about something covered in the uploaded documents?",
+          text: "OpenAI API key is missing. Please set the OPENAI_API_KEY environment variable in your .env.local file and restart the server.",
         });
         return;
       }
+      
+      // Embed the user's message for semantic search
+      try {
+        const [embedding] = await embedTexts([lastUserMessage]);
 
-      // **NEW: Get enhanced chunks with page metadata**
-      const relevantChunks = (await ctx.runQuery(
-        internal.serve.serve.getEnhancedChunks,
-        {
-          embeddingIds: searchResults.map((result) => result._id),
-        }
-      )) as EnhancedChunk[];
-
-      console.log(
-        `Found ${relevantChunks.length} relevant chunks with page info`
-      );
-
-      // **NEW: Get citation metadata for all chunks**
-      const citations = (await ctx.runQuery(
-        internal.serve.serve.getCitationMetadata,
-        {
-          chunks: relevantChunks,
-        }
-      )) as CitationMetadata[];
-
-      // Extract and update PDF IDs
-      const relevantPdfs = relevantChunks.map(
-        (chunk: EnhancedChunk) => chunk.pdfId
-      );
-      const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
-
-      await ctx.runMutation(internal.serve.serve.updateRagSources, {
-        sessionId,
-        pdfIds: uniqueRelevantPdfs,
-      });
-
-      // **NEW: Prepare context with citations**
-      const contextWithCitations = relevantChunks.map((chunk, index) => {
-        const citation = citations[index];
-        const citationText = citation.pageNumber
-          ? `(${citation.filename}, p. ${citation.pageNumber})`
-          : `(${citation.filename})`; // Fallback for document-level chunks
-
-        return {
-          role: "system" as const,
-          content: `Content from ${citationText}:\n\n${chunk.text}`,
-        };
-      });
-
-      // Use OpenAI's streaming API via Vercel AI SDK
-      const result = streamText({
-        model: openai("gpt-4o"),
-        messages: [
+        // Search for relevant documents
+        const searchResults = (await ctx.vectorSearch(
+          "embeddings",
+          "byEmbedding",
           {
-            role: "system",
-            content: `You are a helpful assistant that answers questions based on provided documents. 
-            When you reference specific information, please include the citation in the format "(Filename.pdf, p. 5)" 
-            or "(Filename.pdf)" if no specific page is referenced. 
-            Keep your answers informative but concise. If the information comes from multiple pages or 
-            documents, include multiple citations. The content you receive already includes citations, 
-            so you can reference them in your response.`,
-          },
-          ...contextWithCitations,
-          ...messages.map((msg: Message) => ({
-            role: (msg.isUser ? "user" : "assistant") as "user" | "assistant",
-            content: msg.text,
-          })),
-        ],
-      });
+            vector: embedding,
+            limit: 8,
+          }
+        )) as SearchResult[];
 
-      // Stream the response and update the message incrementally
-      let fullText = "";
-      for await (const textPart of result.textStream) {
-        fullText += textPart;
+        // No relevant documents found
+        if (searchResults.length === 0) {
+          await ctx.runMutation(internal.serve.serve.updateBotMessage, {
+            messageId,
+            text: "I couldn't find any relevant information in the documents to answer your question. Could you please rephrase or ask about something covered in the uploaded documents?",
+          });
+          return;
+        }
 
-        // Update the bot message as new text chunks arrive
+        // Get the full chunks with metadata
+        const relevantChunks = (await ctx.runQuery(
+          internal.serve.serve.getEnhancedChunks,
+          {
+            embeddingIds: searchResults.map((result) => result._id),
+          }
+        )) as EnhancedChunk[];
+
+        // Get citation information
+        const citations = (await ctx.runQuery(
+          internal.serve.serve.getCitationMetadata,
+          {
+            chunks: relevantChunks,
+          }
+        )) as CitationMetadata[];
+
+        // Update sources for UI
+        const relevantPdfs = relevantChunks.map(chunk => chunk.pdfId);
+        const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
+        await ctx.runMutation(internal.serve.serve.updateRagSources, {
+          sessionId,
+          pdfIds: uniqueRelevantPdfs,
+        });
+
+        // Prepare context messages with citations
+        const contextMessages = relevantChunks.map((chunk, index) => {
+          const citation = citations[index];
+          const citationText = citation.pageNumber
+            ? `(${citation.filename}, p. ${citation.pageNumber})`
+            : `(${citation.filename})`;
+
+          return {
+            role: "system" as const,
+            content: `Relevant document ${citationText}:\n\n${chunk.text}`,
+          };
+        });
+
+        // Create the conversation history
+        const conversationMessages = messages.map((msg: Message) => ({
+          role: (msg.isUser ? "user" : "assistant") as "user" | "assistant",
+          content: msg.text,
+        }));
+
+        // Check the streaming model is properly set in config
+        if (!openaiConfig.streamingModel) {
+          await ctx.runMutation(internal.serve.serve.updateBotMessage, {
+            messageId,
+            text: "Error: OpenAI streaming model is not configured. Please check your config.ts file.",
+          });
+          return;
+        }
+        
+        console.log("Using OpenAI streaming model:", openaiConfig.streamingModel);
+        
+        // Start streaming the response
+        const result = streamText({
+          model: openai(openaiConfig.streamingModel),
+          messages: [
+            {
+              role: "system",
+              content: `You are a helpful assistant that answers questions based on provided documents. 
+              When you reference specific information, please include the citation in the format "(Filename.pdf, p. 5)" 
+              or "(Filename.pdf)" if no specific page is referenced. 
+              Keep your answers informative but concise. If you don't know the answer, say so.`,
+            },
+            ...contextMessages,
+            ...conversationMessages,
+          ],
+          temperature: openaiConfig.temperature,
+        });
+
+        // Stream the response and update the message incrementally
+        let fullText = "";
+        for await (const chunk of result.textStream) {
+          fullText += chunk;
+          
+          // Update the bot message with each new chunk
+          await ctx.runMutation(internal.serve.serve.updateBotMessage, {
+            messageId,
+            text: fullText,
+          });
+        }
+      } catch (embeddingError) {
+        console.error("Error in embedding or retrieval process:", embeddingError);
+        
+        // Set a more specific error message for embedding/retrieval errors
+        const errorMessage = "There was an error retrieving relevant documents. This might be due to an issue with the OpenAI API. Please check your API key and try again.";
+        
         await ctx.runMutation(internal.serve.serve.updateBotMessage, {
           messageId,
-          text: fullText,
+          text: errorMessage,
         });
       }
 
-      console.log("Completed streaming response with page citations");
     } catch (error) {
       console.error("Error in streaming response:", error);
-
-      // Update with error message
+      
+      // Check for specific error types
+      let errorMessage = "Sorry, I'm having trouble processing your request right now. Please try again later.";
+      
+      // Check for common API errors
+      if (error instanceof Error) {
+        const errorString = error.toString().toLowerCase();
+        
+        if (errorString.includes("api key")) {
+          errorMessage = "There seems to be an issue with the OpenAI API key. Please check your API configuration.";
+        } else if (errorString.includes("rate limit") || errorString.includes("429")) {
+          errorMessage = "The OpenAI API rate limit has been exceeded. Please try again in a few minutes.";
+        } else if (errorString.includes("timeout") || errorString.includes("timed out")) {
+          errorMessage = "The request to OpenAI API timed out. This might be due to high traffic or a complex query.";
+        }
+      }
+      
+      // Update the bot message with the error
       await ctx.runMutation(internal.serve.serve.updateBotMessage, {
         messageId,
-        text: "Sorry, I encountered an error while generating a response. Please try again.",
+        text: errorMessage,
       });
-
-      throw error;
     }
   },
 });
@@ -466,15 +507,22 @@ export const saveMessage = mutation({
     isUser: v.boolean(),
   },
   handler: async (ctx, { message, sessionId, isUser }) => {
-    await ctx.db.insert("messages", {
+    // Save the message to the database
+    const messageId = await ctx.db.insert("messages", {
       text: message,
       sessionId,
       isUser,
       timestamp: Date.now(),
     });
-    await ctx.scheduler.runAfter(0, internal.serve.serve.answer, {
-      sessionId,
-    });
+    
+    // If this is a user message, trigger the AI to respond
+    if (isUser) {
+      await ctx.scheduler.runAfter(0, internal.serve.serve.answer, {
+        sessionId,
+      });
+    }
+    
+    return messageId;
   },
 });
 

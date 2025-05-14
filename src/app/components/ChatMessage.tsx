@@ -35,7 +35,7 @@ export default function ChatMessage({
         }`}
         style={{ direction: isRTL ? "rtl" : "ltr" }}
       >
-        {message === "" ? (
+        {message === "" || message === "..." ? (
           <TypingIndicator />
         ) : (
           <div
@@ -52,34 +52,44 @@ export default function ChatMessage({
               <ReactMarkdown>{message}</ReactMarkdown>
             ) : (
               // Bot messages need citation processing
-              <ReactMarkdown
-                components={{
-                  // Custom component for text nodes to process citations
-                  text: ({ children }) => (
-                    <ProcessedText
-                      text={children?.toString() || ""}
-                      onCitationClick={onCitationClick}
-                    />
-                  ),
-                  // Keep other markdown components as they are
-                  p: ({ children }) => (
-                    <p>
-                      {React.Children.map(children, (child) =>
-                        typeof child === "string" ? (
-                          <ProcessedText
-                            text={child}
-                            onCitationClick={onCitationClick}
-                          />
-                        ) : (
-                          child
-                        )
-                      )}
-                    </p>
-                  ),
-                }}
-              >
-                {message}
-              </ReactMarkdown>
+              // Check if message appears to be an error message
+              message.includes("API key") || message.includes("error") || message.includes("trouble") ? (
+                <div className="flex items-center">
+                  <svg className="mr-2 h-5 w-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span>{message}</span>
+                </div>
+              ) : (
+                <ReactMarkdown
+                  components={{
+                    // Custom component for text nodes to process citations
+                    text: ({ children }) => (
+                      <ProcessedText
+                        text={children?.toString() || ""}
+                        onCitationClick={onCitationClick}
+                      />
+                    ),
+                    // Keep other markdown components as they are
+                    p: ({ children }) => (
+                      <p>
+                        {React.Children.map(children, (child) =>
+                          typeof child === "string" ? (
+                            <ProcessedText
+                              text={child}
+                              onCitationClick={onCitationClick}
+                            />
+                          ) : (
+                            child
+                          )
+                        )}
+                      </p>
+                    ),
+                  }}
+                >
+                  {message}
+                </ReactMarkdown>
+              )
             )}
           </div>
         )}

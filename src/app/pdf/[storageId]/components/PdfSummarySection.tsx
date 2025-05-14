@@ -5,6 +5,8 @@ import { Id } from "../../../../../convex/_generated/dataModel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
+import { FileText } from "lucide-react";
+import OcrStepperMini from "@/components/OcrStepperMini";
 
 interface PdfSummarySectionProps {
   pdfId: Id<"pdfs">;
@@ -17,7 +19,11 @@ export default function PdfSummarySection({ pdfId }: PdfSummarySectionProps) {
   if (!summary) {
     return (
       <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 mb-4 shadow-lg border border-white/10">
-        <h2 className="text-xl font-semibold mb-4 text-white">Document Summary</h2>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-semibold text-white">Document Summary</h2>
+          <OcrStepperMini provider="gemini" status="pending" />
+          <FileText className="w-5 h-5 text-emerald-400" />
+        </div>
         <div className="space-y-3">
           <Skeleton className="h-4 w-full bg-white/10" />
           <Skeleton className="h-4 w-[90%] bg-white/10" />
@@ -42,14 +48,18 @@ export default function PdfSummarySection({ pdfId }: PdfSummarySectionProps) {
   if (summary.status === "processing") {
     return (
       <div className="bg-white/5 backdrop-blur-md rounded-xl p-6 mb-4 shadow-lg border border-white/10">
-        <h2 className="text-xl font-semibold mb-4 text-white">Document Summary</h2>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-semibold text-white">Document Summary</h2>
+          <OcrStepperMini provider="gemini" status="processing" />
+          <FileText className="w-5 h-5 text-emerald-400" />
+        </div>
         <div className="animate-pulse space-y-3">
           <div className="h-4 bg-white/10 rounded-md w-full"></div>
           <div className="h-4 bg-white/10 rounded-md w-[90%]"></div>
           <div className="h-4 bg-white/10 rounded-md w-[95%]"></div>
           <div className="h-4 bg-white/10 rounded-md w-[85%]"></div>
         </div>
-        <div className="mt-4 text-sm text-emerald-300">Generating summary...</div>
+        <div className="mt-4 text-sm text-emerald-300 text-right">جاري إنشاء الملخص...</div>
       </div>
     );
   }
@@ -67,7 +77,11 @@ export default function PdfSummarySection({ pdfId }: PdfSummarySectionProps) {
       transition={{ duration: 0.5 }}
       className="bg-white/5 backdrop-blur-md rounded-xl p-6 mb-4 shadow-lg border border-white/10"
     >
-      <h2 className="text-xl font-semibold mb-4 text-white">Document Summary</h2>
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-xl font-semibold text-white">Document Summary</h2>
+        <OcrStepperMini provider="gemini" status="completed" />
+        <FileText className="w-5 h-5 text-emerald-400" />
+      </div>
       
       {/* Arabic summary */}
       <div className="mb-4" dir="rtl">

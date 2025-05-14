@@ -10,7 +10,7 @@ import Sources from "../components/Sources";
 import PDFViewer, { PDFViewerHandle } from "../components/PDFViewer";
 import ChatHeader from "../components/ChatHeader";
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 
@@ -80,6 +80,7 @@ export default function Chat() {
   const serverMessages = useQuery(api.serve.serve.retrieveMessages, {
     sessionId,
   });
+  
 
   // Update PDF URL when fileUrl changes
   useEffect(() => {
@@ -88,25 +89,56 @@ export default function Chat() {
     }
   }, [fileUrl]);
   
-  // Sync server messages with local messages
+  // Effect to sync messages from the server
   useEffect(() => {
-    if (serverMessages && serverMessages.length > 0) {
-      // Replace temporary messages with server messages
-      // Map server message format to our ChatMessage format
-      setLocalMessages(serverMessages.map(msg => ({
-        id: msg._id.toString(),
-        text: msg.text,
-        isUser: msg.isUser,
-        timestamp: msg.timestamp,
-        sessionId: msg.sessionId || '',
-      })));
+    // Skip if serverMessages isn't available yet
+    if (!serverMessages) {
+      console.log("Chat page: No server messages available yet, sessionId:", sessionId);
+      return;
     }
-  }, [serverMessages]);
+    
+    console.log("Chat page: Received server messages:", serverMessages.length, "for sessionId:", sessionId);
+    
+    // Convert server messages to client format
+    const formattedMessages = serverMessages.map(msg => ({
+      id: msg._id.toString(),
+      text: msg.text,
+      isUser: msg.isUser,
+      timestamp: msg.timestamp,
+      sessionId: msg.sessionId || '',
+    }));
+    
+    // Update local state
+    setLocalMessages(formattedMessages);
+    console.log("Chat page: Updated localMessages:", formattedMessages.length);
+    
+  }, [serverMessages, sessionId]); // This dependency is safe because useQuery caches the reference
 
+  // Get the chat session creation mutation
+  const saveSessionId = useMutation(api.serve.serve.saveSessionId);
+  
   // Initialize sessionId after component mounts to avoid SSR issues
   // Also handle PDF selection from localStorage
   useEffect(() => {
-    setSessionId(generateUUID());
+    // Only initialize sessionId if it's not already set
+    if (!sessionId) {
+      const newSessionId = generateUUID();
+      console.log("Chat page: Generated new sessionId:", newSessionId);
+      setSessionId(newSessionId);
+      
+      // Save the session ID to Convex
+      saveSessionId({ sessionId: newSessionId })
+        .then(() => console.log("Chat page: Saved sessionId to Convex:", newSessionId))
+        .catch(err => console.error("Chat page: Failed to save sessionId:", err));
+    }
+    // We intentionally omit sessionId and saveSessionId from dependencies
+    // to prevent recreation of sessionId on subsequent renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array to ensure it only runs once on mount
+  
+  // Handle PDF selection separately to avoid sessionId regeneration
+  useEffect(() => {
+    if (!sessionId || !pdfsInfo) return; // Skip if sessionId not yet initialized
     
     // Handle PDF document selection with a slight delay
     setTimeout(() => {
@@ -133,14 +165,23 @@ export default function Chat() {
         console.error("Error handling document selection:", error);
       }
     }, 300);
-  }, [pdfsInfo]);
+  }, [pdfsInfo, sessionId]);
 
   const clearChat = () => {
-    setSessionId(generateUUID());
+    // Generate a new session ID and save it
+    const newSessionId = generateUUID();
+    setSessionId(newSessionId);
+    
+    // Save the new session ID to Convex
+    saveSessionId({ sessionId: newSessionId });
+    
+    // Clear other state
     setPdfUrl("");
     setSelectedFilename("");
     setSelectedFileId(null);
     setLocalMessages([]);
+    
+    // Force a refresh
     router.refresh();
   };
 
