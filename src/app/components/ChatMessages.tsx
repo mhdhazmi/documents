@@ -86,6 +86,7 @@ export default function ChatMessages({
   // Scroll to bottom only when new messages arrive (not on every render)
   // Use a ref to track previous message count to determine if new messages were added
   const prevMessageCountRef = useRef(0);
+  const isInitialLoad = useRef(true);
   
   useEffect(() => {
     if (!messages) return;
@@ -93,11 +94,18 @@ export default function ChatMessages({
     const currentMessageCount = messages.length;
     const hasNewMessages = currentMessageCount > prevMessageCountRef.current;
     
+    // Skip auto-scroll on initial load
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      prevMessageCountRef.current = currentMessageCount;
+      return;
+    }
+    
     // Only auto-scroll if:
     // 1. There are actual new messages (not just re-renders)
     // 2. User is not actively scrolling upward AND
-    // 3. User is already near the bottom OR this is the first load
-    if (hasNewMessages && (!userIsScrolling.current && (isNearBottom() || currentMessageCount <= 1))) {
+    // 3. User is already near the bottom
+    if (hasNewMessages && !userIsScrolling.current && isNearBottom()) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
     

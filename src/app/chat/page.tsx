@@ -90,9 +90,36 @@ export default function Chat() {
   }, [serverMessages]);
 
   // Initialize sessionId after component mounts to avoid SSR issues
+  // Also handle PDF selection from localStorage
   useEffect(() => {
     setSessionId(generateUUID());
-  }, []);
+    
+    // Handle PDF document selection with a slight delay
+    setTimeout(() => {
+      if (typeof window === 'undefined') return;
+      
+      try {
+        // Get PDF ID from localStorage (set by ChatWithDocumentPopup)
+        const lastViewedPdfId = localStorage.getItem('lastViewedPdfId');
+        
+        if (lastViewedPdfId) {
+          // Look up the PDF in our sources to find its file ID
+          const matchingPdf = pdfsInfo?.find(pdf => pdf._id.toString() === lastViewedPdfId);
+          
+          if (matchingPdf) {
+            // Set the file ID from the PDF record
+            setSelectedFileId(matchingPdf.fileId);
+            setSelectedFilename(matchingPdf.filename);
+            
+            // Clear the localStorage entry to avoid unwanted re-loading
+            localStorage.removeItem('lastViewedPdfId');
+          }
+        }
+      } catch (error) {
+        console.error("Error handling document selection:", error);
+      }
+    }, 300);
+  }, [pdfsInfo]);
 
   const clearChat = () => {
     setSessionId(generateUUID());
@@ -182,18 +209,20 @@ export default function Chat() {
         <div className="md:w-1/2 w-full transition-all duration-500 ease-in-out p-3 flex flex-col h-auto md:h-full">
           <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-3 border border-white/20 flex-grow flex flex-col overflow-auto md:h-full">
             <ChatHeader />
-            <ChatMessages
-              messages={localMessages}
-              sessionId={sessionId}
-              onCitationClick={handleCitationClick}
-            />
+            <div className="flex-grow overflow-auto">
+              <ChatMessages
+                messages={localMessages}
+                sessionId={sessionId}
+                onCitationClick={handleCitationClick}
+              />
+            </div>
             <Sources
               sessionId={sessionId}
               setPdfUrl={setPdfUrl}
               onPageNavigate={handlePageNavigate}
             />
-
-            <div className="flex items-center gap-2 mb-1 justify-center">
+            
+            <div className="flex items-center gap-2 mt-1 justify-center">
               <div className="max-w-[600px] flex-1">
                 <ChatInput
                   input={input}

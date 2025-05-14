@@ -21,6 +21,8 @@ interface PageAccordionProps {
   pages: PdfPageInfo[];
   defaultOpen?: number | null;
   className?: string;
+  showSearch?: boolean;
+  searchQuery?: string;
 }
 
 // Component that kicks the OpenAI clean-stream on mount
@@ -60,11 +62,16 @@ export function PageAccordion({
   pages,
   defaultOpen = null,
   className,
+  showSearch = true,
+  searchQuery: externalSearchQuery,
 }: PageAccordionProps) {
   const { page: currentPage, setPage } = usePdfPage();
   const [openItems, setOpenItems] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  
+  // Use external search query if provided, otherwise use internal
+  const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
   const isAutoScrolling = useRef(false);
 
   // Initialize open items ONLY once when component mounts
@@ -113,11 +120,18 @@ export function PageAccordion({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]); // Only depend on currentPage
 
-  // Filter pages based on search
+  // Filter pages based on search - case insensitive and more robust
   const filteredPages = pages?.filter(
-    (page) =>
-      page.pageNumber.toString().includes(searchQuery) ||
-      page.cleanedSnippet?.includes(searchQuery)
+    (page) => {
+      if (!searchQuery || searchQuery.trim() === '') return true;
+      
+      const query = searchQuery.toLowerCase();
+      return (
+        page.pageNumber.toString().includes(query) || 
+        (page.cleanedSnippet && page.cleanedSnippet.toLowerCase().includes(query)) ||
+        (page.fullText && page.fullText.toLowerCase().includes(query))
+      );
+    }
   );
 
   if (!pages) {
@@ -173,16 +187,18 @@ export function PageAccordion({
         className
       )}
     >
-      {/* Search Bar */}
-      <div className="bg-emerald-950/80 backdrop-blur-md rounded-lg p-3 mb-2">
-        <input
-          type="text"
-          placeholder="بحث في الصفحات..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 text-sm text-white bg-white/10 border border-white/20 rounded-md placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-        />
-      </div>
+      {/* Search Bar - conditionally rendered */}
+      {showSearch && (
+        <div className="bg-emerald-950/80 backdrop-blur-md rounded-lg p-3 mb-2">
+          <input
+            type="text"
+            placeholder="بحث في الصفحات..."
+            value={internalSearchQuery}
+            onChange={(e) => setInternalSearchQuery(e.target.value)}
+            className="w-full px-3 py-2 text-sm text-white bg-white/10 border border-white/20 rounded-md placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          />
+        </div>
+      )}
 
       <Accordion
         type="multiple"

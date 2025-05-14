@@ -13,7 +13,8 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import PdfSummarySection from "../components/PdfSummarySection";
+import PdfSummaryAccordion from "../components/PdfSummaryAccordion";
+import ChatWithDocumentPopup from "@/components/ChatWithDocumentPopup";
 
 export default function PagesView() {
   const params = useParams();
@@ -21,6 +22,7 @@ export default function PagesView() {
   const { page, setPage } = usePdfPage();
   const viewerRef = useRef<PDFViewerHandle>(null);
   const [isAccordionCollapsed, setIsAccordionCollapsed] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Get PDF data
   const pdf = useQuery(api.pdf.queries.getPdf, { pdfId: storageId });
@@ -175,11 +177,35 @@ export default function PagesView() {
           <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden">
             {!isAccordionCollapsed && (
               <div className="h-full overflow-y-auto p-2 md:p-4 custom-scrollbar">
-                {/* PDF Summary Section */}
-                <PdfSummarySection pdfId={storageId} />
+                {/* Search Bar with RTL support */}
+                <div className="bg-emerald-950/80 backdrop-blur-md rounded-lg p-3 mb-4">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="بحث في المستند..."
+                      dir="rtl"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2 text-sm text-white bg-white/10 border border-white/20 rounded-md placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    />
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/50">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* PDF Summary Accordion */}
+                <PdfSummaryAccordion pdfId={storageId} />
                 
                 {/* Page Accordion */}
-                <PageAccordion pages={pages} />
+                <PageAccordion 
+                  pages={pages} 
+                  showSearch={false}
+                  searchQuery={searchQuery}
+                />
               </div>
             )}
             {/* Collapse/Expand Button */}
@@ -218,6 +244,12 @@ export default function PagesView() {
           </div>
         </motion.div>
       </div>
+      
+      {/* Chat with document popup */}
+      <ChatWithDocumentPopup 
+        pdfId={storageId} 
+        show={true} // Always show on pages view since we're already in detailed view
+      />
     </div>
   );
 }

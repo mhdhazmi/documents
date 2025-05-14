@@ -109,71 +109,76 @@ export default function Sources({
     }
   };
 
-  // Render toggle buttons for each PDF source with page references in a wrapped grid layout
+  // Render a more compact sources UI
   return (
-    <div className="mb-4 animate-in fade-in duration-300">
-      <h3 className="text-white/80 text-sm mb-2 font-medium text-right">المصادر</h3>
-      <div className="rounded-lg p-2">
-        <div className="flex flex-row-reverse flex-wrap gap-2 justify-center">
-          {sourceInfos.map((sourceInfo) => (
-            <div
-              key={sourceInfo.pdfId.toString()}
-              className={`bg-emerald-950/80 rounded-lg p-2 border transition-all duration-300
-                ${selectedPdfId === sourceInfo.pdfId 
-                  ? 'border-emerald-500/70 shadow-md shadow-emerald-900/30 scale-100' 
-                  : 'border-emerald-700/30 scale-95 hover:scale-100 hover:border-emerald-600/50'}`}
-              style={{ minWidth: '120px', maxWidth: '180px' }}
-              title={`${sourceInfo.filename} ${selectedPdfId === sourceInfo.pdfId ? '(مختار)' : ''}`}
-            >
-              {/* PDF Button */}
-              <button
-                onClick={() => {
-                  setSelectedPdfId(sourceInfo.pdfId);
-                  setSelectedPageNumber(null); // Reset page selection
-                }}
-                className={`flex items-center justify-end gap-1 px-2 h-8 w-full rounded-md
-                  transition-all duration-200 text-white/80 border border-emerald-700/30
-                  ${selectedPdfId === sourceInfo.pdfId 
-                    ? "bg-emerald-600/50 text-white" 
-                    : "bg-emerald-950 hover:bg-emerald-900/50"}`}
-                dir="rtl"
-              >
-                <span className="truncate max-w-[120px]">
-                  {sourceInfo.filename.replace(/\.[^/.]+$/, "")}
-                </span>
-                <FileText className="w-3 h-3 flex-shrink-0" />
-              </button>
-
-              {/* Page Reference Buttons - Show when PDF is selected, no sliding animation */}
-              <div className={`overflow-hidden transition-opacity duration-200
-                ${selectedPdfId === sourceInfo.pdfId ? 'opacity-100 mt-2' : 'hidden opacity-0'}`}>
-                {sourceInfo.pageRefs.size > 0 && (
-                  <div className="flex flex-wrap gap-1 justify-center mt-1" dir="rtl">
-                    {Array.from(sourceInfo.pageRefs)
-                      .sort((a, b) => a - b)
-                      .map((pageNum) => (
-                        <button
-                          key={pageNum}
-                          onClick={() => handlePageSelect(pageNum)}
-                          className={`w-7 h-7 text-xs rounded-full transition-colors flex items-center justify-center ${
-                            selectedPageNumber === pageNum
-                              ? "bg-emerald-600 text-white"
-                              : "bg-emerald-950/90 text-white/70 hover:bg-emerald-700/50"
-                          }`}
-                          title={`صفحة ${pageNum}`}
-                        >
-                          {pageNum}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="mt-1 mb-2 animate-in fade-in duration-300">
+      <div className="flex items-center justify-between mb-1">
+        <div className="h-px bg-gradient-to-l from-emerald-500/20 to-transparent flex-grow mr-2"></div>
+        <h3 className="text-white/80 text-xs font-medium">المصادر</h3>
+        <div className="h-px bg-gradient-to-r from-emerald-500/20 to-transparent flex-grow ml-2"></div>
       </div>
-
       
+      {/* Compact source chips - horizontal list with dropdown for pages */}
+      <div className="flex flex-row-reverse flex-wrap gap-1 justify-center">
+        {sourceInfos.map((sourceInfo) => (
+          <div
+            key={sourceInfo.pdfId.toString()}
+            className="relative"
+          >
+            <button
+              onClick={() => {
+                setSelectedPdfId(sourceInfo.pdfId === selectedPdfId ? null : sourceInfo.pdfId);
+                setSelectedPageNumber(null);
+              }}
+              className={`flex items-center justify-end gap-1 px-2 py-1 rounded-md text-xs
+                transition-all duration-200 border
+                ${selectedPdfId === sourceInfo.pdfId 
+                  ? "bg-emerald-700/50 text-white border-emerald-500/70" 
+                  : "bg-emerald-950/70 text-white/80 border-emerald-800/30 hover:bg-emerald-900/70"}`}
+              dir="rtl"
+              title={sourceInfo.filename}
+            >
+              <span className="truncate max-w-[80px]">
+                {sourceInfo.filename.replace(/\.[^/.]+$/, "")}
+              </span>
+              <FileText className="w-3 h-3 flex-shrink-0" />
+              {sourceInfo.pageRefs.size > 0 && (
+                <span className="text-[10px] bg-emerald-600/40 rounded-full w-4 h-4 flex items-center justify-center ml-1">
+                  {sourceInfo.pageRefs.size}
+                </span>
+              )}
+            </button>
+            
+            {/* Dropdown for page numbers - only visible when PDF is selected */}
+            {selectedPdfId === sourceInfo.pdfId && sourceInfo.pageRefs.size > 0 && (
+              <div className="absolute z-10 top-full mt-1 right-0 bg-emerald-950/90 backdrop-blur-sm rounded border border-emerald-700/40 p-1 shadow-lg animate-in fade-in-50 slide-in-from-top-5 duration-200">
+                <div className="text-[10px] text-white/70 mb-1 text-center" dir="rtl">الصفحات</div>
+                <div className="flex flex-wrap gap-1 max-w-[150px] justify-center" dir="rtl">
+                  {Array.from(sourceInfo.pageRefs)
+                    .sort((a, b) => a - b)
+                    .map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePageSelect(pageNum);
+                        }}
+                        className={`w-5 h-5 text-[10px] rounded transition-colors flex items-center justify-center ${
+                          selectedPageNumber === pageNum
+                            ? "bg-emerald-600 text-white"
+                            : "bg-emerald-950 text-white/70 hover:bg-emerald-700/50"
+                        }`}
+                        title={`صفحة ${pageNum}`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

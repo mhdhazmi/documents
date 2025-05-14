@@ -12,6 +12,7 @@ import GlassmorphicProgressStepper, {
 } from "./components/GlassmorphicProgressStepper";
 import { useProgressiveOcr } from "./hooks/useProgressiveOcr";
 import ProgressBarOverall from "../../../components/ProgressBarOverall";
+import ChatWithDocumentPopup from "../../../components/ChatWithDocumentPopup";
 
 export default function PdfView() {
   // Extract the dynamic segment directly
@@ -157,6 +158,13 @@ export default function PdfView() {
           />
         </div>
       </div>
+      
+
+      {/* Chat with document popup - show when any OCR processing has made progress */}
+      <ChatWithDocumentPopup 
+        pdfId={jobId} 
+        show={completionPercentage >= 20 || geminiStep === "completed" || replicateStep === "completed"}
+      />
     </div>
   );
 }
