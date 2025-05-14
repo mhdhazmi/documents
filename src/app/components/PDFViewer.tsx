@@ -31,16 +31,21 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
       pdfUrl,
       initialPage = 1,
       onPageChange,
-      fitToWidth = true,
-      maxScale = 2.0,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      fitToWidth = true, // Kept for API compatibility
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      maxScale = 2.0,    // Kept for API compatibility
     },
     ref
   ) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    // Used to track the current page so we can display it in the UI
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [currentPage, setCurrentPage] = useState(initialPage);
-    const [totalPages, setTotalPages] = useState(0);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [totalPages] = useState(0); // Kept for future enhancement
     
     // Track zoom level internally
     const [zoomLevel, setZoomLevel] = useState(100);
@@ -55,12 +60,18 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
             // First try to use the iframe's contentWindow.PDFViewerApplication if available
             if (iframeRef.current.contentWindow) {
               // This can only work if the browser doesn't block cross-origin iframe access
-              (iframeRef.current.contentWindow as any).location.hash = `#page=${page}`;
+              // Type assertion needed for iframe contentWindow access
+              const contentWindow = iframeRef.current.contentWindow;
+              if (contentWindow) {
+                // We need to use any here because we're accessing a property that TypeScript doesn't know about
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (contentWindow as any).location.hash = `#page=${page}`;
+              }
               setCurrentPage(page);
               if (onPageChange) onPageChange(page);
             }
-          } catch (err) {
-            console.warn("Could not directly navigate PDF:", err);
+          } catch (error) {
+            console.warn("Could not directly navigate PDF:", error);
             // Fallback - reload the iframe with the page in the URL
             iframeRef.current.src = `${pdfUrl}#page=${page}`;
             setCurrentPage(page);
@@ -159,8 +170,8 @@ const PDFViewer = forwardRef<PDFViewerHandle, PDFViewerProps>(
               try {
                 // Try to prevent scrolling in the iframe content
                 iframeRef.current.contentWindow.scrollTo(0, 0);
-              } catch (err) {
-                // Ignore cross-origin errors
+              } catch {
+                // Ignore cross-origin errors - no need to capture error
               }
             }
           }}

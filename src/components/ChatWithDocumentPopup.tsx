@@ -17,8 +17,10 @@ export default function ChatWithDocumentPopup({ pdfId, show }: ChatWithDocumentP
   const router = useRouter();
   const [isVisible, setIsVisible] = useState(false);
   
-  // Get the PDF data to retrieve the storage ID
-  const pdfData = useQuery(api.pdf.queries.getPdf, {
+  // We don't actually need to use the PDF data here anymore
+  // We're just storing the ID in localStorage and navigating to the chat page
+  // The chat page will retrieve the proper file ID for the PDF
+  useQuery(api.pdf.queries.getPdf, {
     pdfId: pdfId as Id<"pdfs">,
   });
   

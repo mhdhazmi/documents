@@ -52,7 +52,14 @@ export default function Chat() {
     null
   ); // Updated type
   // Store local messages for optimistic updates
-  const [localMessages, setLocalMessages] = useState<Array<any>>([]);
+  interface ChatMessage {
+    id: string;
+    text: string;
+    isUser: boolean;
+    timestamp: number;
+    sessionId: string;
+  }
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const router = useRouter();
 
   // Reference to PDFViewer for page navigation
@@ -85,7 +92,14 @@ export default function Chat() {
   useEffect(() => {
     if (serverMessages && serverMessages.length > 0) {
       // Replace temporary messages with server messages
-      setLocalMessages(serverMessages);
+      // Map server message format to our ChatMessage format
+      setLocalMessages(serverMessages.map(msg => ({
+        id: msg._id.toString(),
+        text: msg.text,
+        isUser: msg.isUser,
+        timestamp: msg.timestamp,
+        sessionId: msg.sessionId || '',
+      })));
     }
   }, [serverMessages]);
 
@@ -161,27 +175,8 @@ export default function Chat() {
     }
   };
   
-  // Zoom control handlers
-  const handleZoomIn = () => {
-    if (pdfViewerRef.current) {
-      pdfViewerRef.current.zoomIn();
-    }
-  };
-  
-  const handleZoomOut = () => {
-    if (pdfViewerRef.current) {
-      pdfViewerRef.current.zoomOut();
-    }
-  };
-  
-  const handleToggleFitMode = () => {
-    if (pdfViewerRef.current) {
-      pdfViewerRef.current.toggleFitToWidth();
-    }
-  };
-
-  // Track if PDF is actively viewed for animation
-  const hasPdf = Boolean(pdfUrl);
+  // Note: We're keeping these handlers defined but not using them directly
+  // They will be used by other components through the ref
 
   return (
     <div

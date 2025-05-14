@@ -11,7 +11,7 @@ export default function ChatInput({ input, setInput, setMessages, sessionId }:
   { 
     input: string, 
     setInput: (input: string) => void, 
-    setMessages: React.Dispatch<React.SetStateAction<any[]>>, 
+    setMessages: React.Dispatch<React.SetStateAction<{ id: string; text: string; isUser: boolean; timestamp: number; sessionId: string }[]>>, 
     sessionId: string 
   }) {
 

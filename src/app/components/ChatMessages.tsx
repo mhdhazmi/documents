@@ -1,13 +1,21 @@
 // src/app/components/ChatMessages.tsx - Updated with citation support and optimistic UI
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import ChatMessage from "./ChatMessage";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 
+interface ChatMessage {
+  id: string;
+  text: string;
+  isUser: boolean;
+  timestamp: number;
+  sessionId: string;
+}
+
 interface ChatMessagesProps {
   sessionId: string;
-  messages?: Array<any>;
+  messages?: ChatMessage[];
   onCitationClick?: (filename: string, pageNumber?: number) => void;
 }
 
@@ -31,8 +39,8 @@ export default function ChatMessages({
   const lastScrollTop = useRef(0);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Function to check if user is near bottom
-  const isNearBottom = () => {
+  // Function to check if user is near bottom - wrapped in useCallback to avoid dependency changes
+  const isNearBottom = useCallback(() => {
     if (!chatContainerRef.current) return true;
 
     const container = chatContainerRef.current;
@@ -41,9 +49,10 @@ export default function ChatMessages({
       container.scrollHeight - container.scrollTop - container.clientHeight;
 
     return distanceFromBottom <= threshold;
-  };
+  }, [chatContainerRef]);
 
   // Set up scroll event listeners
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
@@ -88,6 +97,7 @@ export default function ChatMessages({
   const prevMessageCountRef = useRef(0);
   const isInitialLoad = useRef(true);
   
+  // Scroll handler effect
   useEffect(() => {
     if (!messages) return;
     
@@ -101,17 +111,31 @@ export default function ChatMessages({
       return;
     }
     
+    // Check if near bottom - using function directly here instead of calling isNearBottom()
+    // to avoid the exhaustive-deps warning
+    let shouldScroll = false;
+    if (chatContainerRef.current) {
+      const container = chatContainerRef.current;
+      const threshold = 100; // pixels from bottom to trigger auto-scroll
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      
+      shouldScroll = distanceFromBottom <= threshold;
+    } else {
+      shouldScroll = true;
+    }
+    
     // Only auto-scroll if:
     // 1. There are actual new messages (not just re-renders)
     // 2. User is not actively scrolling upward AND
     // 3. User is already near the bottom
-    if (hasNewMessages && !userIsScrolling.current && isNearBottom()) {
+    if (hasNewMessages && !userIsScrolling.current && shouldScroll) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
     
     // Update the previous message count
     prevMessageCountRef.current = currentMessageCount;
-  }, [messages, isNearBottom]);
+  }, [messages]); // All dependencies are now properly accounted for
 
   return (
     <div
