@@ -13,6 +13,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { motion } from "motion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import PdfSummarySection from "../components/PdfSummarySection";
 
 export default function PagesView() {
   const params = useParams();
@@ -166,6 +167,10 @@ export default function PagesView() {
           <div className="h-full bg-white/5 backdrop-blur-md rounded-xl border border-white/10 overflow-hidden">
             {!isAccordionCollapsed && (
               <div className="h-full overflow-y-auto p-2 md:p-4 custom-scrollbar">
+                {/* PDF Summary Section */}
+                <PdfSummarySection pdfId={storageId} />
+                
+                {/* Page Accordion */}
                 <PageAccordion pages={pages} />
               </div>
             )}

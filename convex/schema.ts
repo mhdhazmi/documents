@@ -133,4 +133,15 @@ export default defineSchema({
   })
     .index("by_page_id", ["pageId"])
     .index("by_page_source", ["pageId", "source"]), // Add this index
+    
+  pdfSummaries: defineTable({
+    pdfId: v.id("pdfs"),
+    summary: v.string(),
+    processedAt: v.number(),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+  }).index("by_pdf_id", ["pdfId"]),
 });

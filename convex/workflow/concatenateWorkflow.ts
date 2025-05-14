@@ -117,17 +117,28 @@ export const concatenateAndEmbedWorkflow = workflow.define({
         { name: `SaveConcatenated-${pdfId}` }
       );
       
-      // 5. Start the embedding process
-      await step.runAction(
-        api.ingest.ingest.chunkAndEmbed,
-        { pdfId },
-        { 
-          retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
-          name: `ChunkAndEmbed-${pdfId}` 
-        }
-      );
+      // 5 & 6: Start both embedding and summary generation in parallel
+      // This avoids waiting for embedding to complete before starting summary
+      await Promise.all([
+        // Start the embedding process
+        step.runAction(
+          api.ingest.ingest.chunkAndEmbed,
+          { pdfId },
+          { 
+            retry: { maxAttempts: 3, initialBackoffMs: 1000, base: 2 },
+            name: `ChunkAndEmbed-${pdfId}` 
+          }
+        ),
+        
+        // Generate a summary of the PDF content (in parallel)
+        step.runMutation(
+          api.pdf.mutations.generatePdfSummary,
+          { pdfId },
+          { name: `GeneratePdfSummary-${pdfId}` }
+        )
+      ]);
       
-      console.log(`Successfully processed PDF ${pdfId} with ${completeSource} source`);
+      console.log(`Successfully processed PDF ${pdfId} with ${completeSource} source and started summary generation`);
     } catch (error) {
       console.error(`Error in concatenateAndEmbedWorkflow for PDF ${pdfId}:`, error);
       throw error;
@@ -139,12 +150,17 @@ export const startConcatenateWorkflow = internalMutation({
   args: {
     pdfId: v.id("pdfs"),
     preferredSource: v.optional(v.union(v.literal("gemini"), v.literal("replicate"))),
+    retryCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await workflow.start(
       ctx,
       internal.workflow.concatenateWorkflow.concatenateAndEmbedWorkflow,
-      { ...args, retryCount: 0 },
+      { 
+        pdfId: args.pdfId,
+        preferredSource: args.preferredSource,
+        retryCount: args.retryCount ?? 0
+      },
     );
   },
 });

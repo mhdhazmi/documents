@@ -1,25 +1,25 @@
-export async function streamClean(
-  jobId: string, 
+export async function streamCleanPage(
+  pageId: string, 
   src: "gemini" | "replicate", 
   onChunk: (c: string) => void,
   onError?: (error: Error) => void
 ): Promise<void> {
-  console.log(`Starting stream cleaning for ${src} OCR of PDF ${jobId}`);
+  console.log(`Starting stream cleaning for ${src} OCR of page ${pageId}`);
   
   try {
-    const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL.replace("convex.cloud", "convex.site")}/clean`, {
+    const resp = await fetch(`${process.env.NEXT_PUBLIC_CONVEX_URL.replace("convex.cloud", "convex.site")}/cleanPage`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
         "Origin": window.location.origin
       },
-      body: JSON.stringify({ pdfId: jobId, source: src }),
+      body: JSON.stringify({ pageId, source: src }),
     });
 
     if (!resp.ok) {
       const errorText = await resp.text();
-      console.error(`Error from clean endpoint (${resp.status}):`, errorText);
-      throw new Error(`Server error: ${resp.status} - ${errorText}`);
+      console.error(`Error from cleanPage endpoint (${resp.status}):`, errorText);
+      throw new Error(`Error from cleanPage endpoint (${resp.status}): ${errorText}`);
     }
 
     if (!resp.body) {
@@ -57,9 +57,9 @@ export async function streamClean(
     
     // Final update
     onChunk(fullText);
-    console.log(`Completed stream cleaning for ${src} OCR of PDF ${jobId}`);
+    console.log(`Completed stream cleaning for ${src} OCR of page ${pageId}`);
   } catch (error) {
-    console.error(`Stream clean error for ${src} OCR of PDF ${jobId}:`, error);
+    console.error(`Stream clean error for ${src} OCR of page ${pageId}:`, error);
     if (onError && error instanceof Error) {
       onError(error);
     } else if (error instanceof Error) {

@@ -1,12 +1,12 @@
 // src/app/pdf/StreamedTextBox.tsx
 "use client";
 
+import React from "react";
 import { Id } from "../../../convex/_generated/dataModel";
 import { usePageStream, selectChunk } from "@/store/pageStreams";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { motion } from "motion/react";
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 interface StreamedTextBoxProps {
@@ -14,9 +14,12 @@ interface StreamedTextBoxProps {
   src: "gemini" | "replicate";
 }
 
-export default function StreamedTextBox({ pageId, src }: StreamedTextBoxProps) {
-  // Get streaming text from store
-  const chunks = usePageStream((state) => selectChunk(pageId, src)(state));
+export default React.memo(function StreamedTextBox({ pageId, src }: StreamedTextBoxProps) {
+  // Get the chunks directly from the store
+  const { chunks: allChunks } = usePageStream();
+  const key = `${pageId}_${src}`;
+  // Extract the specific chunk we need
+  const chunks = allChunks[key] || "";
 
   // Get cleaning status for this page
   const pageResults = useQuery(
@@ -60,11 +63,7 @@ export default function StreamedTextBox({ pageId, src }: StreamedTextBoxProps) {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 5 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="relative space-y-2"
-    >
+    <div className="relative space-y-2">
       {/* Status Header */}
       <div className="flex items-center gap-2 text-xs text-white/70">
         {statusIcon}
@@ -77,17 +76,12 @@ export default function StreamedTextBox({ pageId, src }: StreamedTextBoxProps) {
           <TypingIndicator />
         </div>
       ) : (
-        <motion.div
-          initial={{ height: 0 }}
-          animate={{ height: "auto" }}
-          transition={{ duration: 0.3 }}
-          className="overflow-hidden"
-        >
+        <div className="overflow-hidden">
           <pre className="min-h-[100px] max-h-[250px] overflow-y-auto text-white/90 bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 p-4 text-right font-sans text-xl whitespace-pre-wrap leading-relaxed">
             {chunks || "في انتظار المعالجة..."}
           </pre>
-        </motion.div>
+        </div>
       )}
-    </motion.div>
+    </div>
   );
-}
+});

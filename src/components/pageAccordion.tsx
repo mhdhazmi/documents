@@ -1,7 +1,7 @@
 // src/components/pageAccordion.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   Accordion,
@@ -24,7 +24,8 @@ interface PageAccordionProps {
 }
 
 // Component that kicks the OpenAI clean-stream on mount
-function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
+// Memoized to prevent unnecessary re-renders
+const PageContentWithKicks = React.memo(function PageContent({ page }: { page: PdfPageInfo }) {
   useKickClean({ pageId: page.pageId, src: "gemini" });
   useKickClean({ pageId: page.pageId, src: "replicate" });
 
@@ -53,7 +54,7 @@ function PageContentWithKicks({ page }: { page: PdfPageInfo }) {
       </motion.div>
     </div>
   );
-}
+});
 
 export function PageAccordion({
   pages,
@@ -66,24 +67,27 @@ export function PageAccordion({
   const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
   const isAutoScrolling = useRef(false);
 
-  // Keep track of which accordion rows are open
+  // Initialize open items ONLY once when component mounts
   useEffect(() => {
-    if (pages?.length && defaultOpen !== null) {
-      // If defaultOpen is specified, only open that item
-      setOpenItems([defaultOpen.toString()]);
-    } else if (currentPage) {
-      // Start with only the current page open
-      setOpenItems([currentPage.toString()]);
+    if (pages?.length) {
+      if (defaultOpen !== null) {
+        // If defaultOpen is specified, only open that item
+        setOpenItems([defaultOpen.toString()]);
+      } else if (currentPage) {
+        // Start with only the current page open
+        setOpenItems([currentPage.toString()]);
+      }
     }
-  }, [pages, defaultOpen, currentPage]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps array - only run once on mount
 
-  // Only auto-scroll when the page changes programmatically (not by accordion click)
+  // Handle current page changes - only scroll and ensure it's open
   useEffect(() => {
-    if (!currentPage || isAutoScrolling.current) return;
+    if (!currentPage || isAutoScrolling.current || !pages?.length) return;
 
     const id = currentPage.toString();
 
-    // Always ensure current page is open
+    // Always ensure current page is open, but don't close other pages
     if (!openItems.includes(id)) {
       setOpenItems((prev) => [...prev, id]);
     }
@@ -106,7 +110,8 @@ export function PageAccordion({
     return () => {
       clearTimeout(scrollTimeout.current);
     };
-  }, [currentPage, openItems, setOpenItems]); // Only depend on currentPage, not openItems
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]); // Only depend on currentPage
 
   // Filter pages based on search
   const filteredPages = pages?.filter(
@@ -140,8 +145,13 @@ export function PageAccordion({
       ? (status as "pending" | "processing" | "completed" | "failed")
       : "pending";
 
-  // Simplified value change handler
+  // Simplified value change handler - memoized to prevent unnecessary re-renders
   const handleValueChange = (values: string[]) => {
+    // Skip updates if values array is identical to current openItems
+    if (values.length === openItems.length && values.every(v => openItems.includes(v))) {
+      return;
+    }
+    
     setOpenItems(values);
   };
 

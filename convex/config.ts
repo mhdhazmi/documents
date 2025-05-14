@@ -94,7 +94,40 @@ Avoid breaking up lines or rearranging the order of words unless absolutely nece
 
 make sure the returned text is RTL
 `,
-    userPromptPrefix: "Clean and reformat the following OCR text:\n\n"
+    userPromptPrefix: "Clean and reformat the following OCR text:\n\n",
+    
+    // Summary configuration
+    summaryPrompt: `
+    📝 Document Summary Generator
+    
+    🎯 Objective
+    Create a concise, informative summary of the Arabic document that has been processed through OCR.
+    
+    📌 Instructions
+    Please follow these guidelines:
+    
+    1. Length: Generate a summary of 3-5 paragraphs that captures the key information.
+    
+    2. Content Focus:
+       - Identify the main topic and purpose of the document
+       - Highlight key points, arguments, or findings
+       - Note important dates, names, or numerical data if relevant
+    
+    3. Format:
+       - Write in clear, well-structured Arabic
+       - Use neutral, objective language
+       - Format the response as plain text without special formatting
+       
+    4. Style:
+       - Write in third person
+       - Maintain an informative tone
+       - Avoid introducing information not present in the original text
+    
+    5. Language:
+       - Generate the summary in both Arabic and English, with Arabic first followed by English
+       - Format with clear separation between the two language sections
+    `,
+    summaryUserPromptPrefix: "Generate a summary of the following document text:\n\n"
 };
 
 // General OCR Configuration

@@ -198,3 +198,92 @@ export const getPdfByIds = query({
     }).then((results) => results.filter((pdf) => pdf !== null));
   },
 });
+
+// Get processed pages with cleaned text for a PDF
+export const getProcessedPagesForPdf = query({
+  args: {
+    pdfId: v.id("pdfs"),
+  },
+  handler: async (ctx, args) => {
+    // Get all pages for this PDF in order
+    const pages = await ctx.db
+      .query("pages")
+      .withIndex("byPdfIdAndPageNumber", (q) => q.eq("pdfId", args.pdfId))
+      .collect();
+    
+    // For each page, get the cleaned text
+    const pagesWithText = await asyncMap(pages, async (page) => {
+      // First, check if we have cleaned text from OpenAI
+      const openaiCleaned = await ctx.db
+        .query("openaiCleanedPage")
+        .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+        .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+        .first();
+      
+      if (openaiCleaned?.cleanedText) {
+        return {
+          pageId: page._id,
+          pageNumber: page.pageNumber,
+          cleanedText: openaiCleaned.cleanedText,
+        };
+      }
+      
+      // If no OpenAI cleaned text, try Gemini
+      const geminiOcr = await ctx.db
+        .query("geminiPageOcr")
+        .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+        .filter((q) => q.eq(q.field("ocrStatus"), "completed"))
+        .first();
+      
+      if (geminiOcr?.extractedText) {
+        return {
+          pageId: page._id,
+          pageNumber: page.pageNumber,
+          cleanedText: geminiOcr.extractedText,
+        };
+      }
+      
+      // If no Gemini, try Replicate
+      const replicateOcr = await ctx.db
+        .query("replicatePageOcr")
+        .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
+        .filter((q) => q.eq(q.field("ocrStatus"), "completed"))
+        .first();
+      
+      if (replicateOcr?.extractedText) {
+        return {
+          pageId: page._id,
+          pageNumber: page.pageNumber,
+          cleanedText: replicateOcr.extractedText,
+        };
+      }
+      
+      // If no text found, return with empty text
+      return {
+        pageId: page._id,
+        pageNumber: page.pageNumber,
+        cleanedText: "",
+      };
+    });
+    
+    // Sort by page number and filter out empty pages
+    return pagesWithText
+      .filter(page => page.cleanedText.trim().length > 0)
+      .sort((a, b) => a.pageNumber - b.pageNumber);
+  },
+});
+
+// Get PDF summary
+export const getPdfSummary = query({
+  args: {
+    pdfId: v.id("pdfs"),
+  },
+  handler: async (ctx, args) => {
+    const summary = await ctx.db
+      .query("pdfSummaries")
+      .withIndex("by_pdf_id", (q) => q.eq("pdfId", args.pdfId))
+      .first();
+    
+    return summary;
+  },
+});

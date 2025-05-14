@@ -11,6 +11,7 @@ import PdfPreviewSection from "./components/pdfPreviewSection";
 import GlassmorphicProgressStepper, {
   OcrStep,
 } from "./components/GlassmorphicProgressStepper";
+import PdfSummarySection from "./components/PdfSummarySection";
 
 export default function PdfView() {
   // Extract the dynamic segment directly

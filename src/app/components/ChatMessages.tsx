@@ -23,6 +23,11 @@ export default function ChatMessages({
 
   const messages = retrieveMessages;
 
+  // Track if user is manually scrolling
+  const userIsScrolling = useRef(false);
+  const lastScrollTop = useRef(0);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Function to check if user is near bottom
   const isNearBottom = () => {
     if (!chatContainerRef.current) return true;
@@ -35,9 +40,52 @@ export default function ChatMessages({
     return distanceFromBottom <= threshold;
   };
 
-  // Scroll to bottom whenever messages change, but only if near bottom
+  // Set up scroll event listeners
   useEffect(() => {
-    if (isNearBottom()) {
+    const container = chatContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      if (!container) return;
+      
+      // If user is manually scrolling upward, disable auto-scroll temporarily
+      if (container.scrollTop < lastScrollTop.current) {
+        userIsScrolling.current = true;
+        
+        // Reset the user scrolling flag after user stops scrolling for 2 seconds
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+        
+        scrollTimeoutRef.current = setTimeout(() => {
+          userIsScrolling.current = false;
+        }, 2000);
+      }
+      
+      lastScrollTop.current = container.scrollTop;
+      
+      // If user scrolls to bottom, re-enable auto-scroll
+      if (isNearBottom()) {
+        userIsScrolling.current = false;
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Scroll to bottom when new messages arrive, but respect user scrolling
+  useEffect(() => {
+    // Only auto-scroll if:
+    // 1. User is not actively scrolling upward AND
+    // 2. User is already near the bottom OR this is the first load
+    if (!userIsScrolling.current && (isNearBottom() || !messages?.length)) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
