@@ -105,7 +105,7 @@ export default function PdfSummaryAccordion({ pdfId, className }: PdfSummaryAcco
         className="backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden bg-white/5"
         dir="rtl"
       >
-        <AccordionTrigger className="flex items-center justify-between gap-3 p-4 hover:bg-white/10 transition-colors">
+        <AccordionTrigger className="flex items-center justify-between gap-3 p-4 hover:bg-white/10 transition-colors no-underline [&:hover]:no-underline [&_*]:no-underline">
           <div className="flex items-center gap-3">
             <span className="text-lg font-medium text-white">
               ملخص المستند

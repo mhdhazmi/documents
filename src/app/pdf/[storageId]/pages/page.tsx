@@ -209,16 +209,16 @@ export default function PagesView() {
               </div>
             )}
             {/* Collapse/Expand Button */}
-            <button
+            {/* <button
               onClick={() => setIsAccordionCollapsed(!isAccordionCollapsed)}
               className="absolute -right-3 top-1/2 -translate-y-1/2 bg-emerald-600/90 hover:bg-emerald-600 text-white p-2 rounded-full backdrop-blur-sm transition-colors z-10 shadow-lg"
             >
               {isAccordionCollapsed ? (
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-4 w-10 " />
               ) : (
                 <ChevronLeft className="h-4 w-4" />
               )}
-            </button>
+            </button> */}
           </div>
         </motion.div>
 

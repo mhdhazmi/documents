@@ -213,13 +213,13 @@ export function PageAccordion({
             data-page={page.pageNumber}
             className="backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden"
           >
-            <AccordionTrigger className="flex items-center justify-between gap-3 p-4 hover:bg-white/10 transition-colors">
+            <AccordionTrigger className="flex items-center justify-between gap-3 p-4 hover:bg-white/10 transition-colors no-underline [&:hover]:no-underline [&_*]:no-underline">
               <div className="flex items-center gap-3">
                 {/* Use a span with onClick instead of nested button */}
                 <span
                   onClick={(e) => handlePageClick(page.pageNumber, e)}
                   className={cn(
-                    "text-lg font-medium transition-colors cursor-pointer hover:text-emerald-300",
+                    "text-lg font-medium transition-colors cursor-pointer hover:text-emerald-300 [&:hover]:no-underline [&_*]:no-underline",
                     currentPage === page.pageNumber
                       ? "text-emerald-400"
                       : "text-white"
@@ -227,9 +227,9 @@ export function PageAccordion({
                 >
                   صفحة {page.pageNumber}
                 </span>
-                {currentPage === page.pageNumber && (
+                {/* {currentPage === page.pageNumber && (
                   <span className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" />
-                )}
+                )} */}
 
                 {/* Status Indicators - Gemini (first) and Replicate (second) */}
                 <div className="flex items-center gap-1.5">
