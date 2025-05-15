@@ -363,6 +363,24 @@ export const getPdfSummary = query({
   },
 });
 
+// Get recent PDFs with optional limit
+export const getRecentPdfs = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 5; // Default to 5 if not specified
+    
+    // Get most recent PDFs ordered by creation time
+    const pdfs = await ctx.db
+      .query("pdfs")
+      .order("desc")
+      .take(limit);
+    
+    return pdfs;
+  },
+});
+
 // For debugging and performance benchmarking only
 export const benchmarkPageQueries = query({
   args: {

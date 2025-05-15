@@ -221,7 +221,7 @@ export default function Chat() {
 
   return (
     <div
-      className="min-h-[calc(100vh-4rem)] md:h-full w-full"
+      className="min-h-screen flex-grow w-full" // Use flex-grow instead of fixed height
       style={{
         backgroundImage: 'url("/background.png")',
         backgroundSize: "cover",
@@ -230,9 +230,9 @@ export default function Chat() {
         backgroundAttachment: "fixed",
       }}
     >
-      <div className="flex flex-col md:flex-row h-auto md:h-[calc(100vh-4rem)] relative">
+      <div className="flex flex-col md:flex-row h-[calc(100vh-60px)] md:h-[calc(100vh-56px)] relative"> {/* Precise height calculation */}
         {/* PDF Viewer (always takes 1/2 width on desktop) */}
-        <div className="md:w-1/2 w-full max-h-[400px] md:max-h-none md:h-full p-3 transition-all duration-500 ease-in-out transform overflow-hidden">
+        <div className="md:w-1/2 w-full max-h-[450px] md:max-h-none md:h-full p-2 transition-all duration-500 ease-in-out transform overflow-hidden"> {/* Increased max-height, reduced padding */}
           <PDFViewer
             ref={pdfViewerRef}
             pdfUrl={pdfUrl}
@@ -242,7 +242,7 @@ export default function Chat() {
         </div>
         
         {/* Chat container (always takes 1/2 width on desktop) */}
-        <div className="md:w-1/2 w-full transition-all duration-500 ease-in-out p-3 flex flex-col h-auto md:h-full">
+        <div className="md:w-1/2 w-full transition-all duration-500 ease-in-out p-2 flex flex-col h-auto md:h-full"> {/* Reduced padding */}
           <div className="bg-white/10 backdrop-blur-md shadow-lg rounded-2xl p-3 border border-white/20 flex-grow flex flex-col overflow-auto md:h-full">
             <ChatHeader />
             <div className="flex-grow overflow-auto">
