@@ -73,7 +73,8 @@ export const processPageWithOcr = internalAction({
       const input = {
         pdf: fileUrl,
         page_number: 1, // ← FIXED
-        max_new_tokens: 1024, 
+        max_new_tokens: 2048, // Increased token limit to handle longer documents without repetition
+        temperature: replicateConfig.temperature, // Use temperature setting from config
       };
 
       const pageOutput = await runWithRetry({
@@ -85,6 +86,23 @@ export const processPageWithOcr = internalAction({
         maxRetries: replicateConfig.maxRetries,
         initialDelayMs: replicateConfig.retryDelayMs,
       });
+
+      // Log the raw response from Replicate to diagnose repetition issues
+      console.log(`Replicate Raw Response for page ${args.pageId}:`, JSON.stringify(pageOutput, null, 2));
+      
+      // Also log the type of response
+      console.log(`Replicate Response Type for page ${args.pageId}:`, Array.isArray(pageOutput) ? "Array" : typeof pageOutput);
+      
+      // If it's an array, log some stats to understand the structure better
+      if (Array.isArray(pageOutput)) {
+        console.log(`Array length: ${pageOutput.length}`);
+        
+        // Log first few items (up to 3) for inspection
+        for (let i = 0; i < Math.min(3, pageOutput.length); i++) {
+          console.log(`Item ${i} type:`, typeof pageOutput[i]);
+          console.log(`Item ${i} sample:`, String(pageOutput[i]).substring(0, 200) + "...");
+        }
+      }
 
       const extractedText = extractOCRText(pageOutput);
 

@@ -9,7 +9,7 @@ export const replicate = {
     maxRetries: 3,
     retryDelayMs: 10000, // default retry delay in ms if not specified by API
     timeoutMs: 5000, // timeout between polling requests
-    temperature: 0.1, // Add this parameter to reduce randomness
+    temperature: 0.1, // Set to zero to make the model more deterministic and reduce repetition
 };
 
 // Gemini OCR Configuration
