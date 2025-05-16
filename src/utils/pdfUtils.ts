@@ -11,45 +11,47 @@ export const countPdfPages = (
     const reader = new FileReader();
     
     reader.onload = async (e) => {
-      try {
-        const content = e.target?.result as ArrayBuffer;
-        
-        // Use dynamic import to load pdf.js only when needed
-        const pdfjs = await import('pdfjs-dist/build/pdf');
-        const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
-        
-        // Set the worker source
-        pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-        
-        // Use pdf.js to properly get the page count
-        const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(content) }).promise;
-        const pageCount = pdfDoc.numPages;
-        
-        // Validate the page count is reasonable
-        if (pageCount > 0 && pageCount < 10000) {  // Reasonable upper limit
-          setIsLoading(false);
-          resolve(pageCount);
-        } else {
-          console.warn(`Unusual page count detected: ${pageCount}, validating...`);
-          
-          // Try to actually access a page to validate
-          try {
-            await pdfDoc.getPage(1);
-            setIsLoading(false);
-            resolve(pageCount);
-          } catch (err) {
-            console.error("Failed page access validation:", err);
-            setIsLoading(false);
-            resolve(1); // Default fallback
-          }
-        }
-      } catch (error) {
-        console.error("Error counting PDF pages:", error);
-        setIsLoading(false);
-        
-        // Try fallback method with regex if pdf.js fails
+      const content = e.target?.result as ArrayBuffer;
+      
+      // First try using PDF.js (preferred approach)
+      const countUsingPdfJs = async (): Promise<number> => {
         try {
-          // Fallback to regex method
+          // @ts-ignore - Ignore TypeScript errors for pdf.js imports
+          const pdfjs = await import('pdfjs-dist/build/pdf');
+          // @ts-ignore - Ignore TypeScript errors for pdf.js imports
+          const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
+          
+          // Set the worker source
+          pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+          
+          // Use pdf.js to properly get the page count
+          const pdfDoc = await pdfjs.getDocument({ data: new Uint8Array(content) }).promise;
+          const pageCount = pdfDoc.numPages;
+          
+          // Validate the page count is reasonable
+          if (pageCount > 0 && pageCount < 10000) {  // Reasonable upper limit
+            return pageCount;
+          } else {
+            console.warn(`Unusual page count detected: ${pageCount}, validating...`);
+            
+            // Try to actually access a page to validate
+            try {
+              await pdfDoc.getPage(1);
+              return pageCount;
+            } catch (err) {
+              console.error("Failed page access validation:", err);
+              throw new Error("Failed page validation");
+            }
+          }
+        } catch (error) {
+          console.error("Error using PDF.js:", error);
+          throw error;
+        }
+      };
+      
+      // Fallback method using regex
+      const countUsingRegex = (): number => {
+        try {
           const bytes = new Uint8Array(content);
           let text = "";
           
@@ -73,21 +75,44 @@ export const countPdfPages = (
               const count = parseInt(match[1], 10);
               if (count > 0 && count < 10000) { // Validate count is reasonable
                 console.log("Used fallback regex method to determine page count:", count);
-                resolve(count);
-                return;
+                return count;
               }
             }
           }
           
-          // If all patterns fail, estimate based on file size
-          // Average PDF page is roughly 100KB
+          throw new Error("No valid page count found using regex");
+        } catch (error) {
+          console.error("Error using regex fallback:", error);
+          throw error;
+        }
+      };
+      
+      // Estimate based on file size as last resort
+      const estimateFromFileSize = (): number => {
+        try {
           const estimatedCount = Math.max(1, Math.ceil(file.size / 100000));
           console.warn("Could not determine page count, estimating based on file size:", estimatedCount);
-          resolve(Math.min(estimatedCount, 100)); // Cap at 100 pages for safety
-          
-        } catch (fallbackError) {
-          console.error("Fallback page counting also failed:", fallbackError);
-          resolve(1);
+          return Math.min(estimatedCount, 100); // Cap at 100 pages for safety
+        } catch (error) {
+          console.error("Error estimating from file size:", error);
+          return 1;
+        }
+      };
+      
+      // Try each method in order, falling back to the next if one fails
+      try {
+        const pageCount = await countUsingPdfJs();
+        setIsLoading(false);
+        resolve(pageCount);
+      } catch (error) {
+        try {
+          const pageCount = countUsingRegex();
+          setIsLoading(false);
+          resolve(pageCount);
+        } catch (regexError) {
+          const pageCount = estimateFromFileSize();
+          setIsLoading(false);
+          resolve(pageCount);
         }
       }
     };
