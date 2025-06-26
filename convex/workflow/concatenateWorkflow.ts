@@ -20,8 +20,30 @@ export const concatenateAndEmbedWorkflow = workflow.define({
         { name: `GetPDFPages-${pdfId}` }
       );
       
+      // Handle the case where pages don't exist yet (instead of throwing error)
       if (!pages || pages.length === 0) {
-        throw new Error(`No pages found for PDF ${pdfId}`);
+        console.log(`No pages found for PDF ${pdfId}, will retry later (attempt ${retryCount})`);
+        
+        // Limit retry attempts to avoid infinite loops
+        if (retryCount < 15) { // Increased retry limit for page creation
+          // Schedule this same workflow to run again after a shorter delay for missing pages
+          await step.runAction(
+            internal.concatenate.actions.recheckConcatenation,
+            { 
+              pdfId, 
+              preferredSource,
+              retryCount: retryCount + 1 
+            },
+            { 
+              runAfter: 10000, // 10 seconds for missing pages (shorter than OCR completion)
+              name: `RetryPages-${pdfId}-${retryCount}` 
+            }
+          );
+        } else {
+          console.log(`Max retries reached for PDF ${pdfId} (no pages found), giving up`);
+        }
+        
+        return;
       }
       
       console.log(`Found ${pages.length} pages for PDF ${pdfId}`);

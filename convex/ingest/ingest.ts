@@ -46,7 +46,9 @@ export const createChunks = internalMutation({
     for (const cleanedPage of cleanedPages) {
       const page = await ctx.db.get(cleanedPage.pageId);
       if (page && page.pdfId === arg.pdfId) {
-        pdfPages.set(cleanedPage.pageId, cleanedPage.cleanedText);
+        // Use fullText if available, otherwise fall back to cleanedText
+        const textToUse = cleanedPage.fullText || cleanedPage.cleanedText;
+        pdfPages.set(cleanedPage.pageId, textToUse);
       }
     }
 

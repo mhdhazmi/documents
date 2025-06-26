@@ -71,10 +71,16 @@ export const getConcatenatedText = internalQuery({
         )
         .first();
 
-      if (cleaned?.cleanedText) {
-        pageTexts.push(
-          `--- PAGE ${page.pageNumber} ---\n${cleaned.cleanedText}`
-        );
+      if (cleaned) {
+        // Use fullText if available, otherwise fall back to cleanedText
+        const textToUse = cleaned.fullText || cleaned.cleanedText;
+        if (textToUse) {
+          pageTexts.push(
+            `--- PAGE ${page.pageNumber} ---\n${textToUse}`
+          );
+        } else {
+          pageTexts.push(`--- PAGE ${page.pageNumber} ---\n[No text available]`);
+        }
       } else {
         pageTexts.push(`--- PAGE ${page.pageNumber} ---\n[No text available]`);
       }
