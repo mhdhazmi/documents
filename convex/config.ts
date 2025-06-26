@@ -14,7 +14,7 @@ export const replicate = {
 
 // Gemini OCR Configuration
 export const gemini = {
-    model: "gemini-2.5-flash-preview-04-17", //"gemini-2.5-flash-preview-04-17" or "gemini-2.5-pro-exp-03-25"
+    model: "gemini-2.5-pro", //"gemini-2.5-flash-preview-04-17" or "gemini-2.5-pro-exp-03-25"
     fileProcessingPollingIntervalMs: 1000,
     prompt: `🎯 Objective
 Perform high-accuracy OCR (Optical Character Recognition) on Arabic-language documents. The input may be a scanned document, photographed text, or a PDF containing Arabic script.
@@ -51,8 +51,8 @@ Preserve inline structure (e.g. English terms within Arabic sentences).`
 
 // OpenAI Configuration
 export const openai = {
-    model: "gpt-4o-miniS",
-    streamingModel: "gpt-4o-mini", // Use more stable model for streaming
+    model: "gpt-4o",
+    streamingModel: "gpt-4o", // Use more stable model for streaming
     temperature: 0.1,
     systemPrompt: `
     🧹 Final Cleanup Model Prompt (Arabic Text Post-OCR Correction)
