@@ -117,3 +117,8 @@ To test the implementation:
 2. Reload the page and observe that cleaned text appears instantly
 3. Check browser network tab to confirm that no streaming requests are made for pages with stored `fullText`
 4. Verify that the snippet feature still works for search indexing and previews
+
+## Chunking and Re-embedding
+
+The `createChunks` mutation now prioritizes the `fullText` field when generating chunks. If `fullText` is unavailable, the legacy `cleanedText` snippet is used instead. After deploying this change, you can reprocess existing PDFs by running the `reprocessPdfChunks` action with the desired PDF ID. This action will recreate chunks and embeddings based on the stored full text.
+Only admins can run this action.

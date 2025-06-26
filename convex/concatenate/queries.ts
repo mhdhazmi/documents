@@ -1,6 +1,13 @@
 // convex/concatenate/queries.ts
+import { Doc } from "../_generated/dataModel";
 import { internalQuery } from "../_generated/server";
 import { v } from "convex/values";
+
+// openaiCleanedPage documents store the entire cleaned text in `fullText`.
+// `cleanedText` remains as a backward-compatible snippet.
+interface CleanedPage extends Doc<"openaiCleanedPage"> {
+  fullText?: string;
+}
 
 export const areAllPagesComplete = internalQuery({
   args: {
@@ -20,7 +27,7 @@ export const areAllPagesComplete = internalQuery({
 
     // 2. Check if every page has cleaned results for the specified source
     for (const page of pages) {
-      const cleaned = await ctx.db
+      const cleaned: CleanedPage | null = await ctx.db
         .query("openaiCleanedPage")
         .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
         .filter(
@@ -61,7 +68,7 @@ export const getConcatenatedText = internalQuery({
     const pageTexts: string[] = [];
 
     for (const page of pages) {
-      const cleaned = await ctx.db
+      const cleaned: CleanedPage | null = await ctx.db
         .query("openaiCleanedPage")
         .withIndex("by_page_id", (q) => q.eq("pageId", page._id))
         .filter(
@@ -72,8 +79,10 @@ export const getConcatenatedText = internalQuery({
         .first();
 
       if (cleaned?.cleanedText) {
+        // fullText contains the entire cleaned text. cleanedText is a short
+        // snippet stored for backward compatibility.
         pageTexts.push(
-          `--- PAGE ${page.pageNumber} ---\n${cleaned.cleanedText}`
+          `--- PAGE ${page.pageNumber} ---\n${cleaned.fullText ?? cleaned.cleanedText}`
         );
       } else {
         pageTexts.push(`--- PAGE ${page.pageNumber} ---\n[No text available]`);
