@@ -11,7 +11,13 @@ import { api, internal } from "../_generated/api";
 import { openai } from "@ai-sdk/openai";
 import { embedMany } from "ai";
 import { embedding as embeddingConfig } from "../config";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
+
+// openaiCleanedPage documents store complete text in `fullText` while
+// `cleanedText` retains a snippet for backward compatibility.
+interface CleanedPage extends Doc<"openaiCleanedPage"> {
+  fullText?: string;
+}
 
 export const createChunks = internalMutation({
   args: {
@@ -36,7 +42,7 @@ export const createChunks = internalMutation({
       return;
     }
 
-    const cleanedPages = await ctx.db
+    const cleanedPages: CleanedPage[] = await ctx.db
       .query("openaiCleanedPage")
       .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
       .collect();
@@ -46,7 +52,12 @@ export const createChunks = internalMutation({
     for (const cleanedPage of cleanedPages) {
       const page = await ctx.db.get(cleanedPage.pageId);
       if (page && page.pdfId === arg.pdfId) {
-        pdfPages.set(cleanedPage.pageId, cleanedPage.cleanedText);
+        // fullText stores the complete cleaned text. cleanedText is a short
+        // snippet kept for backward compatibility.
+        pdfPages.set(
+          cleanedPage.pageId,
+          cleanedPage.fullText ?? cleanedPage.cleanedText
+        );
       }
     }
 
@@ -70,8 +81,8 @@ export const createChunks = internalMutation({
     let totalChunks = 0;
 
     // Process each page
-    for (const [pageId, cleanedText] of pdfPages.entries()) {
-      const chunks = await splitter.splitText(cleanedText);
+    for (const [pageId, pageText] of pdfPages.entries()) {
+      const chunks = await splitter.splitText(pageText);
 
       await asyncMap(chunks, async (chunk) => {
         await ctx.db.insert("chunks", {

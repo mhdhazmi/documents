@@ -16,9 +16,7 @@ export const countPdfPages = (
       // First try using PDF.js (preferred approach)
       const countUsingPdfJs = async (): Promise<number> => {
         try {
-          // @ts-ignore - Ignore TypeScript errors for pdf.js imports
           const pdfjs = await import('pdfjs-dist/build/pdf');
-          // @ts-ignore - Ignore TypeScript errors for pdf.js imports
           const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
           
           // Set the worker source
@@ -105,11 +103,13 @@ export const countPdfPages = (
         setIsLoading(false);
         resolve(pageCount);
       } catch (error) {
+        console.error('PDF.js failed to count pages:', error);
         try {
           const pageCount = countUsingRegex();
           setIsLoading(false);
           resolve(pageCount);
         } catch (regexError) {
+          console.warn('Regex page count failed:', regexError);
           const pageCount = estimateFromFileSize();
           setIsLoading(false);
           resolve(pageCount);
