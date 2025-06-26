@@ -121,3 +121,4 @@ To test the implementation:
 ## Chunking and Re-embedding
 
 The `createChunks` mutation now prioritizes the `fullText` field when generating chunks. If `fullText` is unavailable, the legacy `cleanedText` snippet is used instead. After deploying this change, you can reprocess existing PDFs by running the `reprocessPdfChunks` action with the desired PDF ID. This action will recreate chunks and embeddings based on the stored full text.
+Only admins can run this action.
