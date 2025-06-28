@@ -51,8 +51,8 @@ Preserve inline structure (e.g. English terms within Arabic sentences).`
 
 // OpenAI Configuration
 export const openai = {
-    model: "gpt-4o",
-    streamingModel: "gpt-4o", // Use more stable model for streaming
+    model: "gpt-4o-mini",
+    streamingModel: "gpt-4o-mini", // Use mini model for faster and cheaper streaming
     temperature: 0.1,
     systemPrompt: `
     🧹 Final Cleanup Model Prompt (Arabic Text Post-OCR Correction)

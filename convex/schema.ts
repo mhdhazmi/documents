@@ -61,6 +61,32 @@ export default defineSchema({
     .index("bySessionId", ["sessionId"])
     .index("byPdfId", ["pdfIds"]),
 
+  ragTraces: defineTable({
+    sessionId: v.string(),
+    question: v.string(),
+    retrievedDocs: v.array(v.object({
+      filename: v.string(),
+      pageNumber: v.union(v.number(), v.null()),
+      textPreview: v.string(),
+      chunkId: v.string(),
+    })),
+    searchResultsCount: v.number(),
+    responseLength: v.number(),
+    durationMs: v.number(),
+    timestamp: v.number(),
+    sentToLangSmith: v.optional(v.boolean()),
+    // OpenAI context data
+    openaiMessages: v.optional(v.array(v.object({
+      role: v.string(),
+      content: v.string(),
+    }))),
+    openaiModel: v.optional(v.string()),
+    openaiTemperature: v.optional(v.number()),
+    contextMessagesCount: v.optional(v.number()),
+  }).index("bySessionId", ["sessionId"])
+    .index("byTimestamp", ["timestamp"])
+    .index("bySentToLangSmith", ["sentToLangSmith"]),
+
   // New page by page schemas
 
   pages: defineTable({

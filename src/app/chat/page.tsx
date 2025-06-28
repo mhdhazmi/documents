@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
+import { useLangSmithSync } from "../../hooks/useLangSmithSync";
 
 interface PDF {
   _id: Id<"pdfs">;
@@ -51,6 +52,9 @@ export default function Chat() {
   const [selectedFileId, setSelectedFileId] = useState<Id<"_storage"> | null>(
     null
   ); // Updated type
+
+  // Initialize LangSmith sync
+  useLangSmithSync();
   // Store local messages for optimistic updates
   interface ChatMessage {
     id: string;

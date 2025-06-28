@@ -33,6 +33,7 @@ import type * as performOCR from "../performOCR.js";
 import type * as serve_serve from "../serve/serve.js";
 import type * as utils_cleaner from "../utils/cleaner.js";
 import type * as utils_geminiOcr from "../utils/geminiOcr.js";
+import type * as utils_langsmith from "../utils/langsmith.js";
 import type * as utils_pdfSplitter from "../utils/pdfSplitter.js";
 import type * as utils_retry from "../utils/retry.js";
 import type * as utils_stream from "../utils/stream.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "serve/serve": typeof serve_serve;
   "utils/cleaner": typeof utils_cleaner;
   "utils/geminiOcr": typeof utils_geminiOcr;
+  "utils/langsmith": typeof utils_langsmith;
   "utils/pdfSplitter": typeof utils_pdfSplitter;
   "utils/retry": typeof utils_retry;
   "utils/stream": typeof utils_stream;

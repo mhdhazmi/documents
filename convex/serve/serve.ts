@@ -55,6 +55,122 @@ interface SearchResultWithData {
   citations: CitationMetadata[];
 }
 
+// Enhanced logging for observability (Convex-compatible)
+const logRagStep = (step: string, data: any) => {
+  console.log(`[RAG-${step}]`, JSON.stringify(data, null, 2));
+};
+
+// RAG pipeline with enhanced logging
+const enhancedRAGPipeline = async (ctx: any, sessionId: string, lastUserMessage: string, messageId: any) => {
+  try {
+    // Step 1: Embed the user's question
+    logRagStep("QUESTION", { 
+      sessionId, 
+      question: lastUserMessage,
+      timestamp: new Date().toISOString()
+    });
+    
+    const [embedding] = await embedTexts([lastUserMessage]);
+    logRagStep("EMBEDDING", { 
+      embeddingLength: embedding.length,
+      questionLength: lastUserMessage.length
+    });
+
+    // Step 2: Retrieve relevant documents
+    const searchResults = await ctx.vectorSearch(
+      "embeddings",
+      "byEmbedding",
+      {
+        vector: embedding,
+        limit: 8,
+      }
+    );
+
+    logRagStep("RETRIEVAL", { 
+      searchResultsCount: searchResults.length,
+      scores: searchResults.map((r: any) => r._score)
+    });
+
+    if (searchResults.length === 0) {
+      logRagStep("NO_RESULTS", { sessionId });
+      await ctx.runMutation(internal.serve.serve.updateBotMessage, {
+        messageId,
+        text: "I couldn't find any relevant information in the documents to answer your question. Could you please rephrase or ask about something covered in the uploaded documents?",
+      });
+      return { success: false, reason: "No relevant documents found" };
+    }
+
+    // Step 3: Get enhanced chunks with metadata
+    const relevantChunks = (await ctx.runQuery(
+      internal.serve.serve.getEnhancedChunks,
+      {
+        embeddingIds: searchResults.map((result: any) => result._id),
+      }
+    ));
+
+    // Step 4: Get citation information
+    const citations = (await ctx.runQuery(
+      internal.serve.serve.getCitationMetadata,
+      {
+        chunks: relevantChunks,
+      }
+    ));
+
+    // Step 5: Prepare context and log retrieved documents
+    const contextMessages = relevantChunks.map((chunk: any, index: number) => {
+      const citation = citations[index];
+      const citationText = citation.pageNumber
+        ? `(${citation.filename}, p. ${citation.pageNumber})`
+        : `(${citation.filename})`;
+
+      return {
+        role: "system" as const,
+        content: `Relevant document ${citationText}:\n\n${chunk.text}`,
+      };
+    });
+    
+    // Log the retrieved documents for observability
+    const retrievedDocs = relevantChunks.map((chunk: any, index: number) => ({
+      filename: citations[index].filename,
+      pageNumber: citations[index].pageNumber,
+      textPreview: chunk.text.substring(0, 200) + "...",
+      chunkId: chunk._id,
+    }));
+
+    logRagStep("CONTEXT", { 
+      retrievedDocsCount: retrievedDocs.length,
+      documents: retrievedDocs.map((doc: any) => ({
+        filename: doc.filename,
+        pageNumber: doc.pageNumber,
+        textLength: doc.textPreview.length
+      }))
+    });
+
+    // Update sources for UI
+    const relevantPdfs = relevantChunks.map((chunk: any) => chunk.pdfId);
+    const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
+    await ctx.runMutation(internal.serve.serve.updateRagSources, {
+      sessionId,
+      pdfIds: uniqueRelevantPdfs,
+    });
+
+    return {
+      success: true,
+      contextMessages,
+      retrievedDocs,
+      searchResults: searchResults.length,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logRagStep("ERROR", { 
+      error: errorMessage,
+      sessionId,
+      step: "RAG_PIPELINE"
+    });
+    return { success: false, reason: "RAG pipeline error", error: errorMessage };
+  }
+};
+
 // Main answer function implementing streaming with OpenAI and page citations
 export const answer = internalAction({
   args: {
@@ -92,65 +208,16 @@ export const answer = internalAction({
         return;
       }
       
-      // Embed the user's message for semantic search
+      // Use the enhanced RAG pipeline with logging
       try {
-        const [embedding] = await embedTexts([lastUserMessage]);
-
-        // Search for relevant documents
-        const searchResults = (await ctx.vectorSearch(
-          "embeddings",
-          "byEmbedding",
-          {
-            vector: embedding,
-            limit: 8,
-          }
-        )) as SearchResult[];
-
-        // No relevant documents found
-        if (searchResults.length === 0) {
-          await ctx.runMutation(internal.serve.serve.updateBotMessage, {
-            messageId,
-            text: "I couldn't find any relevant information in the documents to answer your question. Could you please rephrase or ask about something covered in the uploaded documents?",
-          });
+        const ragResult = await enhancedRAGPipeline(ctx, sessionId, lastUserMessage, messageId);
+        
+        if (!ragResult.success) {
+          // Error message already set in the pipeline
           return;
         }
-
-        // Get the full chunks with metadata
-        const relevantChunks = (await ctx.runQuery(
-          internal.serve.serve.getEnhancedChunks,
-          {
-            embeddingIds: searchResults.map((result) => result._id),
-          }
-        )) as EnhancedChunk[];
-
-        // Get citation information
-        const citations = (await ctx.runQuery(
-          internal.serve.serve.getCitationMetadata,
-          {
-            chunks: relevantChunks,
-          }
-        )) as CitationMetadata[];
-
-        // Update sources for UI
-        const relevantPdfs = relevantChunks.map(chunk => chunk.pdfId);
-        const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
-        await ctx.runMutation(internal.serve.serve.updateRagSources, {
-          sessionId,
-          pdfIds: uniqueRelevantPdfs,
-        });
-
-        // Prepare context messages with citations
-        const contextMessages = relevantChunks.map((chunk, index) => {
-          const citation = citations[index];
-          const citationText = citation.pageNumber
-            ? `(${citation.filename}, p. ${citation.pageNumber})`
-            : `(${citation.filename})`;
-
-          return {
-            role: "system" as const,
-            content: `Relevant document ${citationText}:\n\n${chunk.text}`,
-          };
-        });
+        
+        const { contextMessages, retrievedDocs } = ragResult;
 
         // Create the conversation history
         const conversationMessages = messages.map((msg: Message) => ({
@@ -169,33 +236,87 @@ export const answer = internalAction({
         
         console.log("Using OpenAI streaming model:", openaiConfig.streamingModel);
         
+        // Prepare the complete messages array for OpenAI
+        const systemMessage = {
+          role: "system" as const,
+          content: `You are a helpful assistant that answers questions based on provided documents. 
+          When you reference specific information, please include the citation in the format "(Filename.pdf, p. 5)" 
+          or "(Filename.pdf)" if no specific page is referenced. 
+          Keep your answers informative but concise. If you don't know the answer, say so.`,
+        };
+
+        const allOpenAIMessages = [
+          systemMessage,
+          ...contextMessages,
+          ...conversationMessages,
+        ];
+        
         // Start streaming the response
+        logRagStep("LLM_REQUEST", {
+          model: openaiConfig.streamingModel,
+          temperature: openaiConfig.temperature,
+          contextMessagesCount: contextMessages.length,
+          conversationLength: conversationMessages.length
+        });
+
         const result = streamText({
           model: openai(openaiConfig.streamingModel),
-          messages: [
-            {
-              role: "system",
-              content: `You are a helpful assistant that answers questions based on provided documents. 
-              When you reference specific information, please include the citation in the format "(Filename.pdf, p. 5)" 
-              or "(Filename.pdf)" if no specific page is referenced. 
-              Keep your answers informative but concise. If you don't know the answer, say so.`,
-            },
-            ...contextMessages,
-            ...conversationMessages,
-          ],
+          messages: allOpenAIMessages,
           temperature: openaiConfig.temperature,
         });
 
         // Stream the response and update the message incrementally
         let fullText = "";
+        let chunkCount = 0;
+        const startTime = Date.now();
+        
         for await (const chunk of result.textStream) {
           fullText += chunk;
+          chunkCount++;
           
           // Update the bot message with each new chunk
           await ctx.runMutation(internal.serve.serve.updateBotMessage, {
             messageId,
             text: fullText,
           });
+        }
+        
+        const endTime = Date.now();
+        const totalDuration = endTime - startTime;
+        
+        logRagStep("LLM_RESPONSE", {
+          responseLength: fullText.length,
+          chunkCount,
+          durationMs: totalDuration,
+          sessionId
+        });
+
+        // Store trace data for LangSmith
+        if (retrievedDocs && retrievedDocs.length > 0) {
+          console.log("Storing RAG trace data for LangSmith...");
+          try {
+            await ctx.runMutation(internal.serve.serve.storeRAGTrace, {
+              sessionId,
+              traceData: {
+                sessionId,
+                question: lastUserMessage,
+                retrievedDocs,
+                searchResultsCount: ragResult.searchResults || 0,
+                responseLength: fullText.length,
+                durationMs: totalDuration,
+                timestamp: Date.now(),
+                // OpenAI context data
+                openaiMessages: allOpenAIMessages,
+                openaiModel: openaiConfig.streamingModel,
+                openaiTemperature: openaiConfig.temperature,
+                contextMessagesCount: contextMessages.length,
+              }
+            });
+            console.log("RAG trace data stored successfully");
+          } catch (traceError) {
+            console.error("Failed to store RAG trace data:", traceError);
+            // Don't fail the main request if tracing fails
+          }
         }
       } catch (embeddingError) {
         console.error("Error in embedding or retrieval process:", embeddingError);
@@ -544,5 +665,61 @@ export const retrieveMessages = query({
       .query("messages")
       .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
       .collect();
+  },
+});
+
+// Store RAG trace data for LangSmith
+export const storeRAGTrace = internalMutation({
+  args: {
+    sessionId: v.string(),
+    traceData: v.object({
+      sessionId: v.string(),
+      question: v.string(),
+      retrievedDocs: v.array(v.object({
+        filename: v.string(),
+        pageNumber: v.union(v.number(), v.null()),
+        textPreview: v.string(),
+        chunkId: v.string(),
+      })),
+      searchResultsCount: v.number(),
+      responseLength: v.number(),
+      durationMs: v.number(),
+      timestamp: v.number(),
+      // OpenAI context data
+      openaiMessages: v.optional(v.array(v.object({
+        role: v.string(),
+        content: v.string(),
+      }))),
+      openaiModel: v.optional(v.string()),
+      openaiTemperature: v.optional(v.number()),
+      contextMessagesCount: v.optional(v.number()),
+    })
+  },
+  handler: async (ctx, { sessionId, traceData }) => {
+    return await ctx.db.insert("ragTraces", {
+      ...traceData,
+      sentToLangSmith: false,
+    });
+  },
+});
+
+// Get pending RAG traces for LangSmith
+export const getPendingRAGTraces = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("ragTraces")
+      .withIndex("bySentToLangSmith", (q) => q.eq("sentToLangSmith", false))
+      .take(10); // Limit to 10 at a time
+  },
+});
+
+// Mark RAG trace as sent to LangSmith
+export const markRAGTraceSent = mutation({
+  args: {
+    traceId: v.id("ragTraces"),
+  },
+  handler: async (ctx, { traceId }) => {
+    return await ctx.db.patch(traceId, { sentToLangSmith: true });
   },
 });
