@@ -4,8 +4,7 @@ import { traceable } from "langsmith/traceable";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 
-// Create Convex client for server-side use
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE!);
+// Convex client will be created in request handlers with proper error handling
 
 // Interface for cleaned trace data (without Convex fields)
 interface CleanTraceData {
@@ -87,6 +86,7 @@ export async function POST(request: NextRequest) {
     // Check environment variables
     const langsmithApiKey = process.env.LANGSMITH_API_KEY;
     const langsmithTracing = process.env.LANGSMITH_TRACING;
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE;
     
     if (!langsmithApiKey || langsmithTracing !== "true") {
       return NextResponse.json({ 
@@ -95,7 +95,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (!convexUrl) {
+      return NextResponse.json({ 
+        success: false, 
+        error: "Convex configuration not available" 
+      }, { status: 500 });
+    }
+
     console.log("Syncing pending RAG traces to LangSmith...");
+
+    // Create Convex client for server-side use
+    const convex = new ConvexHttpClient(convexUrl);
 
     // Get pending traces from Convex
     const pendingTraces = await convex.query(api.serve.serve.getPendingRAGTraces);

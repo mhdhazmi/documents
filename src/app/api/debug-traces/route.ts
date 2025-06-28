@@ -3,11 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 
-// Create Convex client for server-side use
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE!);
-
 export async function GET(request: NextRequest) {
   try {
+    // Create Convex client for server-side use with error handling
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE;
+    if (!convexUrl) {
+      return NextResponse.json({ 
+        success: false, 
+        error: "Convex configuration not available" 
+      }, { status: 500 });
+    }
+    
+    const convex = new ConvexHttpClient(convexUrl);
+    
     // Get pending traces from Convex
     const pendingTraces = await convex.query(api.serve.serve.getPendingRAGTraces);
     
