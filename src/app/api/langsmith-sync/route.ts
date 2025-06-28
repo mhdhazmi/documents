@@ -7,9 +7,22 @@ import { api } from "../../../../convex/_generated/api";
 // Create Convex client for server-side use
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE!);
 
+// Interface for cleaned trace data (without Convex fields)
+interface CleanTraceData {
+  question: string;
+  retrievedDocs: any[];
+  searchResultsCount: number;
+  responseLength: number;
+  durationMs: number;
+  openaiModel?: string;
+  openaiTemperature?: number;
+  contextMessagesCount?: number;
+  openaiMessages?: any[];
+}
+
 // Traceable wrapper for RAG pipeline
 const traceRAGPipeline = traceable(
-  async (data: any) => {
+  async (data: CleanTraceData) => {
     return {
       question: data.question,
       documentsRetrieved: data.retrievedDocs.length,
@@ -41,7 +54,7 @@ const traceRAGPipeline = traceable(
 
 // Additional traceable for OpenAI context details
 const traceOpenAIContext = traceable(
-  async (data: any) => {
+  async (data: CleanTraceData) => {
     if (!data.openaiMessages) return { noMessages: true };
     
     return {
@@ -95,12 +108,25 @@ export async function POST(request: NextRequest) {
     // Process each trace
     for (const trace of pendingTraces) {
       try {
+        // Clean trace data by removing Convex-specific fields
+        const cleanTrace: CleanTraceData = {
+          question: trace.question,
+          retrievedDocs: trace.retrievedDocs,
+          searchResultsCount: trace.searchResultsCount,
+          responseLength: trace.responseLength,
+          durationMs: trace.durationMs,
+          openaiModel: trace.openaiModel,
+          openaiTemperature: trace.openaiTemperature,
+          contextMessagesCount: trace.contextMessagesCount,
+          openaiMessages: trace.openaiMessages
+        };
+        
         // Send main RAG pipeline trace to LangSmith
-        await traceRAGPipeline(trace);
+        await traceRAGPipeline(cleanTrace);
         
         // Send detailed OpenAI context trace if available
-        if (trace.openaiMessages) {
-          await traceOpenAIContext(trace);
+        if (cleanTrace.openaiMessages) {
+          await traceOpenAIContext(cleanTrace);
         }
         
         // Mark as sent in Convex
