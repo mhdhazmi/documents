@@ -28,7 +28,7 @@
     "clsx": "^2.1.1",
     "convex": "^1.23.0",
     "langchain": "^0.3.22",
-    "langsmith": "^0.3.56",
+    "langsmith": "^0.2.1",
     "lightningcss": "1.30.0",
     "lodash.debounce": "^4.0.8",
     "lucide": "^0.488.0",
