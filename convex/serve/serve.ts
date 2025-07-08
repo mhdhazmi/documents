@@ -82,7 +82,7 @@ const enhancedRAGPipeline = async (ctx: any, sessionId: string, lastUserMessage:
       "byEmbedding",
       {
         vector: embedding,
-        limit: 8,
+        limit: 25,
       }
     );
 
