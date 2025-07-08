@@ -39,6 +39,7 @@ export const createChunks = internalMutation({
     const cleanedPages = await ctx.db
       .query("openaiCleanedPage")
       .filter((q) => q.eq(q.field("cleaningStatus"), "completed"))
+      .filter((q) => q.eq(q.field("source"), "gemini"))
       .collect();
 
     const pdfPages = new Map<Id<"pages">, string>();
