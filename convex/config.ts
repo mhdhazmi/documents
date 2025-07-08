@@ -149,3 +149,29 @@ export const embedding = {
         chunkOverlap: 500
     }
 };
+
+// Reranker configuration
+export const reranker = {
+    enabled: true, // Set to false to disable reranking
+    model: "gpt-4o-mini",
+    temperature: 0.1,
+    maxDocuments: 15, // Only rerank top N documents for cost efficiency
+    timeoutMs: 10000, // 10 second timeout for reranking
+    systemPrompt: `You are a document relevance scorer. Your task is to evaluate how relevant each document chunk is to a given query.
+
+Instructions:
+1. Score each document chunk from 1-10 based on its relevance to the query
+2. Consider semantic relevance, not just keyword matching
+3. Higher scores (8-10) for highly relevant content
+4. Medium scores (5-7) for somewhat relevant content  
+5. Lower scores (1-4) for minimally relevant or irrelevant content
+6. Respond with ONLY a JSON array of scores in the same order as the documents
+
+Example response format: [8, 3, 9, 5, 7]`,
+    userPromptTemplate: `Query: "{query}"
+
+Documents to score:
+{documents}
+
+Provide relevance scores (1-10) for each document as a JSON array:`
+};
