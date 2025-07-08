@@ -42,10 +42,17 @@ export default defineSchema({
       filterFields: ["pdfId", "pageId"], // NEW: Add pageId to vector search filter fields
     }),
 
-  // Add to schema.ts
+  // Chat sessions table - stores persistent chat sessions
   chatSessions: defineTable({
     sessionId: v.string(),
-  }),
+    title: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    isActive: v.boolean(),
+  })
+    .index("bySessionId", ["sessionId"])
+    .index("byIsActive", ["isActive"])
+    .index("byCreatedAt", ["createdAt"]),
 
   messages: defineTable({
     sessionId: v.optional(v.string()),

@@ -118,24 +118,18 @@ export default function Chat() {
     
   }, [serverMessages, sessionId]); // This dependency is safe because useQuery caches the reference
 
-  // Get the chat session creation mutation
-  const saveSessionId = useMutation(api.serve.serve.saveSessionId);
+  // Remove database session saving - chat is now ephemeral
   
   // Initialize sessionId after component mounts to avoid SSR issues
-  // Also handle PDF selection from localStorage
+  // Generate a new ephemeral session for each page load
   useEffect(() => {
     // Only initialize sessionId if it's not already set
     if (!sessionId) {
       const newSessionId = generateUUID();
-      console.log("Chat page: Generated new sessionId:", newSessionId);
+      console.log("Chat page: Generated ephemeral sessionId:", newSessionId);
       setSessionId(newSessionId);
-      
-      // Save the session ID to Convex
-      saveSessionId({ sessionId: newSessionId })
-        .then(() => console.log("Chat page: Saved sessionId to Convex:", newSessionId))
-        .catch(err => console.error("Chat page: Failed to save sessionId:", err));
     }
-    // We intentionally omit sessionId and saveSessionId from dependencies
+    // We intentionally omit sessionId from dependencies
     // to prevent recreation of sessionId on subsequent renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array to ensure it only runs once on mount
@@ -172,12 +166,9 @@ export default function Chat() {
   }, [pdfsInfo, sessionId]);
 
   const clearChat = () => {
-    // Generate a new session ID and save it
+    // Generate a new ephemeral session ID
     const newSessionId = generateUUID();
     setSessionId(newSessionId);
-    
-    // Save the new session ID to Convex
-    saveSessionId({ sessionId: newSessionId });
     
     // Clear other state
     setPdfUrl("");

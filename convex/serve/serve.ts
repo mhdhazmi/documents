@@ -650,9 +650,101 @@ export const saveMessage = mutation({
 export const saveSessionId = mutation({
   args: {
     sessionId: v.string(),
+    title: v.optional(v.string()),
+  },
+  handler: async (ctx, { sessionId, title }) => {
+    // Check if session already exists
+    const existingSession = await ctx.db
+      .query("chatSessions")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+    
+    if (existingSession) {
+      // Update existing session
+      return await ctx.db.patch(existingSession._id, {
+        updatedAt: Date.now(),
+        isActive: true,
+        ...(title && { title }),
+      });
+    }
+    
+    // Create new session
+    return await ctx.db.insert("chatSessions", {
+      sessionId,
+      title: title || "New Chat",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      isActive: true,
+    });
+  },
+});
+
+export const getChatSessions = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("chatSessions")
+      .withIndex("byIsActive", (q) => q.eq("isActive", true))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const getChatSession = query({
+  args: {
+    sessionId: v.string(),
   },
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db.insert("chatSessions", { sessionId });
+    return await ctx.db
+      .query("chatSessions")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+  },
+});
+
+export const updateChatSession = mutation({
+  args: {
+    sessionId: v.string(),
+    title: v.optional(v.string()),
+    isActive: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { sessionId, title, isActive }) => {
+    const session = await ctx.db
+      .query("chatSessions")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+    
+    if (!session) {
+      throw new Error("Session not found");
+    }
+    
+    return await ctx.db.patch(session._id, {
+      ...(title && { title }),
+      ...(isActive !== undefined && { isActive }),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const deleteChatSession = mutation({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, { sessionId }) => {
+    // Mark session as inactive instead of deleting
+    const session = await ctx.db
+      .query("chatSessions")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .unique();
+    
+    if (session) {
+      await ctx.db.patch(session._id, {
+        isActive: false,
+        updatedAt: Date.now(),
+      });
+    }
+    
+    return session;
   },
 });
 
