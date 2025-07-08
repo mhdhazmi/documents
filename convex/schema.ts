@@ -76,6 +76,7 @@ export default defineSchema({
       pageNumber: v.union(v.number(), v.null()),
       textPreview: v.string(),
       chunkId: v.string(),
+      rerankScore: v.optional(v.number()),
     })),
     searchResultsCount: v.number(),
     responseLength: v.number(),

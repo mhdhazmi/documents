@@ -11,9 +11,9 @@ import { api, internal } from "../_generated/api";
 import { v } from "convex/values";
 import { embedTexts } from "../ingest/ingest";
 import { asyncMap } from "modern-async";
-import { streamText } from "ai";
+import { streamText, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { openai as openaiConfig } from "../config";
+import { openai as openaiConfig, reranker as rerankerConfig } from "../config";
 
 // Updated chunk type to include pageId and page metadata
 interface EnhancedChunk {
@@ -58,6 +58,122 @@ interface SearchResultWithData {
 // Enhanced logging for observability (Convex-compatible)
 const logRagStep = (step: string, data: any) => {
   console.log(`[RAG-${step}]`, JSON.stringify(data, null, 2));
+};
+
+// LLM-based reranking function
+const rerankDocuments = async (
+  query: string, 
+  chunks: EnhancedChunk[], 
+  citations: CitationMetadata[]
+): Promise<{ chunks: EnhancedChunk[], citations: CitationMetadata[], rerankScores?: number[] }> => {
+  // Check if reranking is enabled
+  if (!rerankerConfig.enabled) {
+    logRagStep("RERANKER_DISABLED", { chunksCount: chunks.length });
+    return { chunks, citations };
+  }
+
+  // Limit to top N documents for cost efficiency
+  const documentsToRerank = Math.min(chunks.length, rerankerConfig.maxDocuments);
+  if (chunks.length <= 1 || documentsToRerank <= 1) {
+    logRagStep("RERANKER_SKIPPED", { reason: "too_few_documents", chunksCount: chunks.length });
+    return { chunks, citations };
+  }
+
+  const startTime = Date.now();
+  
+  try {
+    // Prepare documents for reranking (limit to first N)
+    const chunksToRerank = chunks.slice(0, documentsToRerank);
+    const citationsToRerank = citations.slice(0, documentsToRerank);
+    
+    // Format documents for the reranker prompt
+    const documentsText = chunksToRerank.map((chunk, index) => 
+      `Document ${index + 1}: ${chunk.text.substring(0, 500)}...`
+    ).join('\n\n');
+
+    const userPrompt = rerankerConfig.userPromptTemplate
+      .replace('{query}', query)
+      .replace('{documents}', documentsText);
+
+    logRagStep("RERANKER_REQUEST", { 
+      query, 
+      documentsCount: documentsToRerank,
+      model: rerankerConfig.model 
+    });
+
+    // Call GPT-4o-mini for reranking
+    const result = await generateText({
+      model: openai(rerankerConfig.model),
+      messages: [
+        { role: "system", content: rerankerConfig.systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: rerankerConfig.temperature,
+      maxTokens: 100, // Short response expected
+    });
+
+    // Parse the response
+    let scores: number[];
+    try {
+      // Extract JSON array from response
+      const jsonMatch = result.text.match(/\[[\d,\s]+\]/);
+      if (!jsonMatch) {
+        throw new Error("No JSON array found in response");
+      }
+      scores = JSON.parse(jsonMatch[0]);
+      
+      if (!Array.isArray(scores) || scores.length !== documentsToRerank) {
+        throw new Error(`Expected ${documentsToRerank} scores, got ${scores?.length || 0}`);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse reranker response:", result.text, parseError);
+      logRagStep("RERANKER_PARSE_ERROR", { 
+        response: result.text, 
+        error: parseError instanceof Error ? parseError.message : String(parseError) 
+      });
+      return { chunks, citations }; // Return original order on parse failure
+    }
+
+    // Create sorted indices based on scores (highest first)
+    const sortedIndices = scores
+      .map((score, index) => ({ score, index }))
+      .sort((a, b) => b.score - a.score)
+      .map(item => item.index);
+
+    // Reorder chunks and citations based on scores
+    const rerankedChunks = [
+      ...sortedIndices.map(i => chunksToRerank[i]), // Reranked documents first
+      ...chunks.slice(documentsToRerank) // Remaining documents in original order
+    ];
+    
+    const rerankedCitations = [
+      ...sortedIndices.map(i => citationsToRerank[i]), // Reranked citations first
+      ...citations.slice(documentsToRerank) // Remaining citations in original order
+    ];
+
+    const duration = Date.now() - startTime;
+    logRagStep("RERANKER_SUCCESS", { 
+      originalScores: scores,
+      reorderedIndices: sortedIndices,
+      durationMs: duration,
+      documentsReranked: documentsToRerank
+    });
+
+    return { chunks: rerankedChunks, citations: rerankedCitations, rerankScores: scores };
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    logRagStep("RERANKER_ERROR", { 
+      error: errorMessage,
+      durationMs: duration,
+      fallbackToOriginal: true
+    });
+    
+    console.error("Reranking failed, falling back to original order:", error);
+    return { chunks, citations }; // Return original order on any error
+  }
 };
 
 // RAG pipeline with enhanced logging
@@ -116,9 +232,16 @@ const enhancedRAGPipeline = async (ctx: any, sessionId: string, lastUserMessage:
       }
     ));
 
-    // Step 5: Prepare context and log retrieved documents
-    const contextMessages = relevantChunks.map((chunk: any, index: number) => {
-      const citation = citations[index];
+    // Step 5: Rerank documents using LLM (if enabled)
+    const { chunks: rerankedChunks, citations: rerankedCitations, rerankScores } = await rerankDocuments(
+      lastUserMessage,
+      relevantChunks,
+      citations
+    );
+
+    // Step 6: Prepare context and log retrieved documents (using reranked results)
+    const contextMessages = rerankedChunks.map((chunk: any, index: number) => {
+      const citation = rerankedCitations[index];
       const citationText = citation.pageNumber
         ? `(${citation.filename}, p. ${citation.pageNumber})`
         : `(${citation.filename})`;
@@ -129,12 +252,13 @@ const enhancedRAGPipeline = async (ctx: any, sessionId: string, lastUserMessage:
       };
     });
     
-    // Log the retrieved documents for observability
-    const retrievedDocs = relevantChunks.map((chunk: any, index: number) => ({
-      filename: citations[index].filename,
-      pageNumber: citations[index].pageNumber,
+    // Log the retrieved documents for observability (using reranked results)
+    const retrievedDocs = rerankedChunks.map((chunk: any, index: number) => ({
+      filename: rerankedCitations[index].filename,
+      pageNumber: rerankedCitations[index].pageNumber,
       textPreview: chunk.text.substring(0, 200) + "...",
       chunkId: chunk._id,
+      rerankScore: rerankScores && index < rerankScores.length ? rerankScores[index] : undefined,
     }));
 
     logRagStep("CONTEXT", { 
@@ -146,8 +270,8 @@ const enhancedRAGPipeline = async (ctx: any, sessionId: string, lastUserMessage:
       }))
     });
 
-    // Update sources for UI
-    const relevantPdfs = relevantChunks.map((chunk: any) => chunk.pdfId);
+    // Update sources for UI (using reranked results)
+    const relevantPdfs = rerankedChunks.map((chunk: any) => chunk.pdfId);
     const uniqueRelevantPdfs = [...new Set(relevantPdfs)];
     await ctx.runMutation(internal.serve.serve.updateRagSources, {
       sessionId,
@@ -247,7 +371,7 @@ export const answer = internalAction({
 
         const allOpenAIMessages = [
           systemMessage,
-          ...contextMessages,
+          ...(contextMessages || []),
           ...conversationMessages,
         ];
         
@@ -255,7 +379,7 @@ export const answer = internalAction({
         logRagStep("LLM_REQUEST", {
           model: openaiConfig.streamingModel,
           temperature: openaiConfig.temperature,
-          contextMessagesCount: contextMessages.length,
+          contextMessagesCount: contextMessages?.length || 0,
           conversationLength: conversationMessages.length
         });
 
@@ -309,7 +433,7 @@ export const answer = internalAction({
                 openaiMessages: allOpenAIMessages,
                 openaiModel: openaiConfig.streamingModel,
                 openaiTemperature: openaiConfig.temperature,
-                contextMessagesCount: contextMessages.length,
+                contextMessagesCount: contextMessages?.length || 0,
               }
             });
             console.log("RAG trace data stored successfully");
@@ -597,6 +721,61 @@ export const getRagSources = query({
   },
 });
 
+export const getHighQualitySources = query({
+  args: {
+    sessionId: v.string(),
+    minRerankScore: v.optional(v.number()),
+  },
+  handler: async (ctx, { sessionId, minRerankScore = 7 }) => {
+    // Get the latest RAG trace for this session
+    const ragTraces = await ctx.db
+      .query("ragTraces")
+      .withIndex("bySessionId", (q) => q.eq("sessionId", sessionId))
+      .order("desc")
+      .take(1);
+    
+    if (ragTraces.length === 0) {
+      return [];
+    }
+    
+    const latestTrace = ragTraces[0];
+    
+    // Filter retrieved docs by rerank score if available
+    const highQualityDocs = latestTrace.retrievedDocs.filter((doc: any) => {
+      // If rerank score is available, filter by minimum score
+      if (doc.rerankScore !== undefined) {
+        return doc.rerankScore >= minRerankScore;
+      }
+      // If no rerank score, include all docs (fallback for backward compatibility)
+      return true;
+    });
+    
+    // Extract unique filenames from high quality docs
+    const uniqueFilenames = [...new Set(highQualityDocs.map((doc: any) => doc.filename))];
+    
+    // Get PDF metadata for these filenames
+    const pdfs = await Promise.all(
+      uniqueFilenames.map(async (filename) => {
+        const pdf = await ctx.db
+          .query("pdfs")
+          .filter((q) => q.eq(q.field("filename"), filename))
+          .first();
+        return pdf;
+      })
+    );
+    
+    const validPdfs = pdfs.filter(Boolean);
+    const pdfIds = validPdfs.map(pdf => pdf!._id);
+    
+    return {
+      pdfIds: pdfIds,
+      pdfs: validPdfs,
+      docsCount: highQualityDocs.length,
+      minScore: minRerankScore
+    };
+  },
+});
+
 export const addBotMessage = internalMutation({
   args: {
     sessionId: v.string(),
@@ -772,6 +951,7 @@ export const storeRAGTrace = internalMutation({
         pageNumber: v.union(v.number(), v.null()),
         textPreview: v.string(),
         chunkId: v.string(),
+        rerankScore: v.optional(v.number()),
       })),
       searchResultsCount: v.number(),
       responseLength: v.number(),
