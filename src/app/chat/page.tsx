@@ -69,12 +69,8 @@ export default function Chat() {
   // Reference to PDFViewer for page navigation
   const pdfViewerRef = useRef<PDFViewerHandle>(null);
 
-  // Fetch data using Convex queries at the component level
-  const sourcesData = useQuery(api.serve.serve.getRagSources, { sessionId });
-  const pdfIds = sourcesData?.[sourcesData?.length - 1]?.pdfIds ?? [];
-  const pdfsInfo = useQuery(api.pdf.queries.getPdfByIds, { pdfIds }) as
-    | PDF[]
-    | undefined;
+  // This data is now handled directly in the Sources component
+  // using getHighQualitySources query - no need to fetch here
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
     selectedFileId ? { fileId: selectedFileId } : "skip"

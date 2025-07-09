@@ -140,14 +140,25 @@ const rerankDocuments = async (
       .sort((a, b) => b.score - a.score)
       .map(item => item.index);
 
-    // Reorder chunks and citations based on scores
+    // Attach rerank scores to chunks and citations before reordering
+    const chunksWithScores = chunksToRerank.map((chunk, index) => ({
+      ...chunk,
+      rerankScore: scores[index]
+    }));
+    
+    const citationsWithScores = citationsToRerank.map((citation, index) => ({
+      ...citation,
+      rerankScore: scores[index]
+    }));
+
+    // Reorder chunks and citations based on scores (scores travel with documents)
     const rerankedChunks = [
-      ...sortedIndices.map(i => chunksToRerank[i]), // Reranked documents first
-      ...chunks.slice(documentsToRerank) // Remaining documents in original order
+      ...sortedIndices.map(i => chunksWithScores[i]), // Reranked documents first
+      ...chunks.slice(documentsToRerank) // Remaining documents in original order (no scores)
     ];
     
     const rerankedCitations = [
-      ...sortedIndices.map(i => citationsToRerank[i]), // Reranked citations first
+      ...sortedIndices.map(i => citationsWithScores[i]), // Reranked citations first
       ...citations.slice(documentsToRerank) // Remaining citations in original order
     ];
 
@@ -253,13 +264,20 @@ const enhancedRAGPipeline = async (ctx: any, sessionId: string, lastUserMessage:
     });
     
     // Log the retrieved documents for observability (using reranked results)
-    const retrievedDocs = rerankedChunks.map((chunk: any, index: number) => ({
-      filename: rerankedCitations[index].filename,
-      pageNumber: rerankedCitations[index].pageNumber,
-      textPreview: chunk.text.substring(0, 200) + "...",
-      chunkId: chunk._id,
-      rerankScore: rerankScores && index < rerankScores.length ? rerankScores[index] : undefined,
-    }));
+    const retrievedDocs = rerankedChunks.map((chunk: any, index: number) => {
+      const doc = {
+        filename: rerankedCitations[index].filename,
+        pageNumber: rerankedCitations[index].pageNumber,
+        textPreview: chunk.text.substring(0, 200) + "...",
+        chunkId: chunk._id,
+        rerankScore: chunk.rerankScore, // Score is now attached to the chunk itself
+      };
+      // Debug: Log what scores are being stored
+      if (index < 5) { // Log first 5 documents
+        console.log(`Storing doc ${index}: ${doc.filename} (page ${doc.pageNumber}) with score: ${doc.rerankScore}`);
+      }
+      return doc;
+    });
 
     logRagStep("CONTEXT", { 
       retrievedDocsCount: retrievedDocs.length,
@@ -744,9 +762,12 @@ export const getHighQualitySources = query({
     const highQualityDocs = latestTrace.retrievedDocs.filter((doc: any) => {
       // If rerank score is available, filter by minimum score
       if (doc.rerankScore !== undefined) {
-        return doc.rerankScore >= minRerankScore;
+        const passes = doc.rerankScore >= minRerankScore;
+        console.log(`Filtering doc ${doc.filename} (page ${doc.pageNumber}): score ${doc.rerankScore}, passes filter (≥${minRerankScore}): ${passes}`);
+        return passes;
       }
       // If no rerank score, include all docs (fallback for backward compatibility)
+      console.log(`Doc ${doc.filename} (page ${doc.pageNumber}): no rerank score, including by default`);
       return true;
     });
     
