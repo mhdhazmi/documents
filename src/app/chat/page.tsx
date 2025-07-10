@@ -10,22 +10,11 @@ import Sources from "../components/Sources";
 import PDFViewer, { PDFViewerHandle } from "../components/PDFViewer";
 import ChatHeader from "../components/ChatHeader";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useLangSmithSync } from "../../hooks/useLangSmithSync";
 
-interface PDF {
-  _id: Id<"pdfs">;
-  _creationTime: number;
-  processingError?: string;
-  fileId: Id<"_storage">; // Updated to use proper storage ID type
-  filename: string;
-  fileSize: number;
-  pageCount: number;
-  uploadedAt: number;
-  status: string;
-}
 
 // Polyfill for crypto.randomUUID
 const generateUUID = () => {
@@ -195,7 +184,7 @@ export default function Chat() {
         return;
       }
 
-      setSelectedFileId(targetPdf.fileId);
+      setSelectedFileId(targetPdf.fileId as Id<"_storage">);
       setSelectedFilename(filename);
 
       // Navigate to the specific page if pageNumber is provided
