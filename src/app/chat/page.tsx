@@ -151,7 +151,7 @@ export default function Chat() {
         
         if (lastViewedPdfId) {
           // Look up the PDF in our sources to find its file ID
-          const matchingPdf = pdfsInfo?.find(pdf => pdf._id.toString() === lastViewedPdfId);
+          const matchingPdf = pdfsInfo?.find(pdf => pdf?._id.toString() === lastViewedPdfId);
           
           if (matchingPdf) {
             // Set the file ID from the PDF record
