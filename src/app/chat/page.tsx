@@ -155,7 +155,7 @@ export default function Chat() {
           
           if (matchingPdf) {
             // Set the file ID from the PDF record
-            setSelectedFileId(matchingPdf.fileId);
+            setSelectedFileId(matchingPdf.fileId as Id<"_storage">);
             setSelectedFilename(matchingPdf.filename);
             
             // Clear the localStorage entry to avoid unwanted re-loading
