@@ -69,8 +69,15 @@ export default function Chat() {
   // Reference to PDFViewer for page navigation
   const pdfViewerRef = useRef<PDFViewerHandle>(null);
 
-  // This data is now handled directly in the Sources component
-  // using getHighQualitySources query - no need to fetch here
+  // Fetch high quality sources with rerank scores >= 7 (needed for PDF selection logic)
+  const highQualitySourcesData = useQuery(api.serve.serve.getHighQualitySources, { 
+    sessionId,
+    minRerankScore: 7 
+  });
+  
+  // Extract PDFs info from high quality sources data
+  const pdfsInfo = Array.isArray(highQualitySourcesData) ? [] : (highQualitySourcesData?.pdfs?.filter(Boolean) ?? []);
+  
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
     selectedFileId ? { fileId: selectedFileId } : "skip"
