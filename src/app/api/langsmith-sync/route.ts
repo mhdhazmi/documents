@@ -102,13 +102,25 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log("Syncing pending RAG traces to LangSmith...");
-
     // Create Convex client for server-side use
     const convex = new ConvexHttpClient(convexUrl);
 
-    // Get pending traces from Convex
-    const pendingTraces = await convex.query(api.serve.serve.getPendingRAGTraces);
+    // Check if this is a single trace sync request
+    const body = await request.json().catch(() => ({}));
+    const { traceId } = body;
+
+    let pendingTraces;
+    
+    if (traceId) {
+      console.log(`Syncing specific trace ${traceId} to LangSmith...`);
+      // Get specific trace
+      const trace = await convex.query(api.serve.serve.getRAGTraceById, { traceId });
+      pendingTraces = trace ? [trace] : [];
+    } else {
+      console.log("Syncing pending RAG traces to LangSmith...");
+      // Get all pending traces
+      pendingTraces = await convex.query(api.serve.serve.getPendingRAGTraces);
+    }
     
     console.log(`Found ${pendingTraces.length} pending traces`);
 

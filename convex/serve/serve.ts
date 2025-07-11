@@ -455,6 +455,19 @@ export const answer = internalAction({
               }
             });
             console.log("RAG trace data stored successfully");
+            
+            // Trigger immediate LangSmith sync if enabled
+            if (process.env.LANGSMITH_TRACING === "true") {
+              try {
+                console.log("Triggering immediate LangSmith sync...");
+                await ctx.scheduler.runAfter(0, internal.serve.serve.syncLatestTraceToLangSmith, {
+                  sessionId
+                });
+              } catch (syncError) {
+                console.error("Failed to schedule LangSmith sync:", syncError);
+                // Don't fail the main request if sync scheduling fails
+              }
+            }
           } catch (traceError) {
             console.error("Failed to store RAG trace data:", traceError);
             // Don't fail the main request if tracing fails
@@ -1014,5 +1027,77 @@ export const markRAGTraceSent = mutation({
   },
   handler: async (ctx, { traceId }) => {
     return await ctx.db.patch(traceId, { sentToLangSmith: true });
+  },
+});
+
+// Internal action to sync latest trace to LangSmith immediately
+export const syncLatestTraceToLangSmith = internalAction({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Get the latest unsent trace for this session
+      const latestTrace = await ctx.runQuery(internal.serve.serve.getLatestUnsentTrace, {
+        sessionId: args.sessionId,
+      });
+      
+      if (!latestTrace) {
+        console.log("No unsent traces found for immediate sync");
+        return;
+      }
+      
+      console.log(`Syncing trace ${latestTrace._id} to LangSmith immediately...`);
+      
+      // Call the LangSmith sync API
+      const baseUrl = process.env.DEPLOYMENT_URL || process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE?.replace('/api', '');
+      const response = await fetch(`${baseUrl}/api/langsmith-sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          traceId: latestTrace._id,
+        }),
+      });
+      
+      if (!response.ok) {
+        console.error("LangSmith immediate sync failed:", response.statusText);
+        return;
+      }
+      
+      const result = await response.json();
+      console.log("LangSmith immediate sync result:", result);
+      
+    } catch (error) {
+      console.error("Error in immediate LangSmith sync:", error);
+    }
+  },
+});
+
+// Query to get latest unsent trace for a session
+export const getLatestUnsentTrace = internalQuery({
+  args: {
+    sessionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("ragTraces")
+      .filter((q) => q.and(
+        q.eq(q.field("sessionId"), args.sessionId),
+        q.eq(q.field("sentToLangSmith"), false)
+      ))
+      .order("desc")
+      .first();
+  },
+});
+
+// Query to get a specific RAG trace by ID
+export const getRAGTraceById = query({
+  args: {
+    traceId: v.id("ragTraces"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.traceId);
   },
 });
