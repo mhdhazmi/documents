@@ -88,10 +88,20 @@ export async function POST(request: NextRequest) {
     const langsmithTracing = process.env.LANGSMITH_TRACING;
     const convexUrl = process.env.NEXT_PUBLIC_CONVEX_HTTP_BASE;
     
+    console.log("Environment check:", {
+      hasApiKey: !!langsmithApiKey,
+      tracingValue: langsmithTracing,
+      hasConvexUrl: !!convexUrl
+    });
+    
     if (!langsmithApiKey || langsmithTracing !== "true") {
       return NextResponse.json({ 
         success: false, 
-        error: "LangSmith not configured" 
+        error: "LangSmith not configured",
+        debug: {
+          hasApiKey: !!langsmithApiKey,
+          tracingValue: langsmithTracing
+        }
       });
     }
 
