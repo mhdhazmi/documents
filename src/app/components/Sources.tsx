@@ -24,11 +24,13 @@ export default function Sources({
   setPdfUrl,
   onPageNavigate,
 }: SourcesProps) {
-  // Fetch all ragSources entries for this session
-  const sourcesData = useQuery(api.serve.serve.getRagSources, { sessionId });
-  // Use the latest entry's pdfIds or empty array
-  const pdfIds: Id<"pdfs">[] =
-    sourcesData?.[sourcesData.length - 1]?.pdfIds ?? [];
+  // Fetch high quality sources with rerank scores >= 7
+  const highQualitySourcesData = useQuery(api.serve.serve.getHighQualitySources, { 
+    sessionId,
+    minRerankScore: 7 
+  });
+  
+  const pdfIds: Id<"pdfs">[] = Array.isArray(highQualitySourcesData) ? [] : (highQualitySourcesData?.pdfIds ?? []);
 
   // Track which PDF is selected
   const [selectedPdfId, setSelectedPdfId] = useState<Id<"pdfs"> | null>(null);
@@ -37,11 +39,8 @@ export default function Sources({
   );
   const [sourceInfos, setSourceInfos] = useState<SourceInfo[]>([]);
 
-  // Query for all PDFs to get their filenames
-  const pdfsInfo = useQuery(
-    api.pdf.queries.getPdfByIds,
-    pdfIds.length > 0 ? { pdfIds } : "skip"
-  );
+  // Use PDFs from high quality sources data if available
+  const pdfsInfo = Array.isArray(highQualitySourcesData) ? [] : (highQualitySourcesData?.pdfs?.filter(Boolean) ?? []);
 
   // Query metadata and file URL when a PDF is selected
   const pdfMeta = useQuery(
@@ -68,7 +67,7 @@ export default function Sources({
       const citationSummary = groupCitationsByFile(allCitations);
 
       // Create source infos with extracted page references
-      const infos: SourceInfo[] = pdfsInfo.map((pdf) => {
+      const infos: SourceInfo[] = pdfsInfo.map((pdf: any) => {
         const pdfCitations = citationSummary[pdf.filename] || {
           pages: new Set<number>(),
           totalReferences: 0,
@@ -114,7 +113,12 @@ export default function Sources({
     <div className="mt-1 mb-2 animate-in fade-in duration-300">
       <div className="flex items-center justify-between mb-1">
         <div className="h-px bg-gradient-to-l from-emerald-500/20 to-transparent flex-grow mr-2"></div>
-        <h3 className="text-white/80 text-xs font-medium">المصادر</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-white/80 text-xs font-medium">المصادر</h3>
+          <span className="text-[10px] text-emerald-400 bg-emerald-900/30 px-1 py-0.5 rounded" title="Sources with rerank score ≥ 7">
+            عالية الجودة
+          </span>
+        </div>
         <div className="h-px bg-gradient-to-r from-emerald-500/20 to-transparent flex-grow ml-2"></div>
       </div>
       

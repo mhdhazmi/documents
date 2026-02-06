@@ -17,6 +17,8 @@ export function useLangSmithSync() {
 
       const result = await response.json();
       
+      console.log("LangSmith sync result:", result);
+      
       if (result.successCount > 0) {
         console.log(`LangSmith sync: ${result.successCount} traces sent successfully`);
       }

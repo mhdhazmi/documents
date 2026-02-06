@@ -10,22 +10,11 @@ import Sources from "../components/Sources";
 import PDFViewer, { PDFViewerHandle } from "../components/PDFViewer";
 import ChatHeader from "../components/ChatHeader";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useLangSmithSync } from "../../hooks/useLangSmithSync";
 
-interface PDF {
-  _id: Id<"pdfs">;
-  _creationTime: number;
-  processingError?: string;
-  fileId: Id<"_storage">; // Updated to use proper storage ID type
-  filename: string;
-  fileSize: number;
-  pageCount: number;
-  uploadedAt: number;
-  status: string;
-}
 
 // Polyfill for crypto.randomUUID
 const generateUUID = () => {
@@ -69,12 +58,15 @@ export default function Chat() {
   // Reference to PDFViewer for page navigation
   const pdfViewerRef = useRef<PDFViewerHandle>(null);
 
-  // Fetch data using Convex queries at the component level
-  const sourcesData = useQuery(api.serve.serve.getRagSources, { sessionId });
-  const pdfIds = sourcesData?.[sourcesData?.length - 1]?.pdfIds ?? [];
-  const pdfsInfo = useQuery(api.pdf.queries.getPdfByIds, { pdfIds }) as
-    | PDF[]
-    | undefined;
+  // Fetch high quality sources with rerank scores >= 7 (needed for PDF selection logic)
+  const highQualitySourcesData = useQuery(api.serve.serve.getHighQualitySources, { 
+    sessionId,
+    minRerankScore: 7 
+  });
+  
+  // Extract PDFs info from high quality sources data
+  const pdfsInfo = Array.isArray(highQualitySourcesData) ? [] : (highQualitySourcesData?.pdfs?.filter(Boolean) ?? []);
+  
   const fileUrl = useQuery(
     api.files.queries.getFileDownloadUrl,
     selectedFileId ? { fileId: selectedFileId } : "skip"
@@ -148,11 +140,11 @@ export default function Chat() {
         
         if (lastViewedPdfId) {
           // Look up the PDF in our sources to find its file ID
-          const matchingPdf = pdfsInfo?.find(pdf => pdf._id.toString() === lastViewedPdfId);
+          const matchingPdf = pdfsInfo?.find(pdf => pdf?._id.toString() === lastViewedPdfId);
           
           if (matchingPdf) {
             // Set the file ID from the PDF record
-            setSelectedFileId(matchingPdf.fileId);
+            setSelectedFileId(matchingPdf.fileId as Id<"_storage">);
             setSelectedFilename(matchingPdf.filename);
             
             // Clear the localStorage entry to avoid unwanted re-loading
@@ -192,7 +184,7 @@ export default function Chat() {
         return;
       }
 
-      setSelectedFileId(targetPdf.fileId);
+      setSelectedFileId(targetPdf.fileId as Id<"_storage">);
       setSelectedFilename(filename);
 
       // Navigate to the specific page if pageNumber is provided
